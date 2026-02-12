@@ -21,8 +21,8 @@ if name:
     st.write(f"Hello, {name}! 👋")
 
 # Slider example
-age = st.slider("Select a value:", 0, 100, 25)
-st.write(f"Selected value: {age}")
+value = st.slider("Select a value:", 0, 100, 25)
+st.write(f"Selected value: {value}")
 
 # Selectbox example
 option = st.selectbox(
