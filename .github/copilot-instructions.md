@@ -1,11 +1,13 @@
 # Stableman - Copilot Instructions 🐴
 
 ## Project Overview
-Stableman is a simple Streamlit web application that demonstrates basic Streamlit components and serves as a foundation for data science/ML web apps. The project follows a minimal single-file architecture with straightforward deployment to Streamlit Cloud.
+Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with Weather APIs to deliver real-time, condition-specific blanketing recommendations. The project follows a minimal single-file architecture with straightforward deployment to Streamlit Cloud.
 
 ## Architecture & Structure
 - **Single-file app**: All functionality is contained in `streamlit_app.py`
-- **Minimal dependencies**: Only requires `streamlit>=1.30.0`
+- **Weather Integration**: Connects to Weather APIs for real-time conditions
+- **Decision Logic**: Implements horse blanketing guidelines based on weather data
+- **Minimal dependencies**: Core requirements in `requirements.txt` (Streamlit + weather API client)
 - **Virtual environment workflow**: Uses `.venv` for local development
 - **Cloud-ready**: Configured for easy Streamlit Cloud deployment
 
@@ -82,5 +84,6 @@ if result:
 
 ## External Dependencies
 - **Streamlit**: Core framework, version pinned to >=1.30.0
+- **Weather API**: External service integration for real-time weather data
 - **Python**: Requires 3.8+ (specified in README)
 - **Streamlit Cloud**: Deployment target (no additional config needed)
