@@ -38,9 +38,10 @@ def render_about_tab():
     
     with col1:
         st.write("**Current Weather**")
-        st.write("• AmbientWeather.net API")
+        st.write("• 🏡 AmbientWeather.net API (Primary)")
+        st.write("• 🏛️ Weather.gov API (Fallback)")
         st.write("• 1-minute cache refresh")
-        st.write("• Direct weather station access")
+        st.write("• Automatic fallback if station unavailable")
         st.write("• Temperature, humidity, feels-like")
     
     with col2:

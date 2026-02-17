@@ -53,11 +53,20 @@ def render_current_weather_tab(weather_data, error):
     Render the current weather tab content.
     
     Args:
-        weather_data (dict): Weather data from API
+        weather_data (dict): Weather data from API (may include 'source' field)
         error (str): Error message if any
     """
     st.header("🌤️ Current Weather Conditions")
-    st.caption("⏱️ Data refreshed every 1 minute to respect API rate limits (1 req/sec)")
+    
+    # Show data source and refresh info
+    source_info = ""
+    if weather_data and weather_data.get('source'):
+        if weather_data['source'] == 'ambient':
+            source_info = " • 🏡 Personal Weather Station"
+        elif weather_data['source'] == 'weather_gov':
+            source_info = " • 🏛️ National Weather Service (Fallback)"
+    
+    st.caption(f"⏱️ Data refreshed every 1 minute{source_info}")
 
     if error:
         # Check if this is a device selection error
@@ -115,7 +124,26 @@ def render_current_weather_tab(weather_data, error):
             if weather_data.get('last_update'):
                 try:
                     last_update = weather_data['last_update']
-                    timestamp_ms = int(last_update) if isinstance(last_update, (int, float, str)) else 0
+                    
+                    # Handle different timestamp formats
+                    if weather_data.get('source') == 'weather_gov':
+                        # Weather.gov provides ISO datetime strings
+                        from dateutil import parser as date_parser
+                        import pytz
+                        
+                        if isinstance(last_update, str):
+                            dt = date_parser.parse(last_update)
+                            # Convert to UTC timestamp in milliseconds
+                            if dt.tzinfo:
+                                utc_dt = dt.astimezone(pytz.UTC)
+                            else:
+                                utc_dt = pytz.UTC.localize(dt)
+                            timestamp_ms = int(utc_dt.timestamp() * 1000)
+                        else:
+                            timestamp_ms = 0
+                    else:
+                        # AmbientWeather provides millisecond timestamps
+                        timestamp_ms = int(last_update) if isinstance(last_update, (int, float, str)) else 0
                     
                     # Use timezone utility to format timestamp
                     formatted_time, relative_time = format_timestamp(timestamp_ms)
