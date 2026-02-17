@@ -45,7 +45,6 @@ def get_forecast_data(latitude: float, longitude: float):
     return None, None, "No forecast data available"
 
 st.title("🐴 Stableman")
-st.write("Horse blanketing instructions based on current weather conditions")
 
 # Check configuration using the configuration module
 missing_config = check_configuration()

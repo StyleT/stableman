@@ -109,22 +109,11 @@ def render_main_tab(weather_data):
     
     st.info(f"{phase_emoji} **{phase_name}** ({phase_description}) - {current_time}")
     
-    # Blanketing Instructions
-    st.header("🐴 Blanketing Instructions")
-    st.write(f"""
-    Based on current weather conditions and the **{phase_name}** care phase, here are the recommended blanketing instructions for stable hands:
-    
-    **Daily Care Schedule:**
-    - 🌅 **Morning** (until 11:00 AM): Initial assessment and blanketing
-    - ☀️ **Day** (11:00 AM - 3:50 PM): Midday monitoring and adjustments  
-    - 🌙 **Night** (3:50 PM onwards): Final check and overnight preparation
-    """)
-
     # Advanced blanketing logic with forecast integration
     if weather_data and weather_data['feels_like'] is not None:
         current_feels_like = weather_data['feels_like']
         
-        st.subheader("🌡️ Advanced Blanketing Recommendations")
+        st.header("🌡️ Blanketing Recommendations")
         
         # Get forecast data for next phase
         try:

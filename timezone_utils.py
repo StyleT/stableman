@@ -7,7 +7,6 @@ import pytz
 from streamlit_javascript import st_javascript
 
 
-@st.cache_data(ttl=3600)  # Cache timezone for 1 hour
 def get_user_timezone():
     """
     Get the user's local timezone from their browser.
@@ -15,24 +14,22 @@ def get_user_timezone():
     Returns:
         pytz.timezone: User's local timezone object, defaults to UTC if detection fails
     """
-    try:
+    # Use session state to store timezone once detected
+    if 'user_timezone' not in st.session_state:
         # Get timezone using JavaScript in the browser
         timezone_name = st_javascript("""
-            await (async () => {
-                const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                console.log('User timezone:', userTimezone);
-                return userTimezone;
-            })().then(returnValue => returnValue)
-        """)
+            const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            console.log('User timezone:', userTimezone);
+            return userTimezone;
+        """, key="user_timezone_detector")
         
         if timezone_name and timezone_name != "":
-            return pytz.timezone(timezone_name)
+            st.session_state.user_timezone = pytz.timezone(timezone_name)
         else:
             # Fallback if JavaScript doesn't return a timezone
-            return pytz.UTC
-    except:
-        # Final fallback to UTC
-        return pytz.UTC
+            st.session_state.user_timezone = pytz.UTC
+    
+    return st.session_state.user_timezone
 
 
 def format_timestamp(timestamp_ms, timezone_obj=None):
