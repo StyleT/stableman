@@ -4,11 +4,16 @@
 Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with AmbientWeather.net API to deliver real-time, condition-specific blanketing recommendations with intelligent caching and rate limiting.
 
 ## Architecture & Structure
-- **Modular Design**: Separated concerns across multiple focused modules
-- **Main UI**: Core weather application logic in `streamlit_app.py`
+- **Four-Tab Modular Design**: Complete separation of concerns across focused UI modules
+- **Main Orchestration**: Core application logic in `streamlit_app.py`
 - **Configuration Management**: Environment variable validation and UI in `configuration.py`
 - **Weather API Module**: AmbientWeather.net client in `ambient_weather.py`
 - **Forecast API Module**: Weather.gov client in `weather_gov.py`
+- **Tab Modules**: Dedicated files for each UI tab
+  - `main_tab.py` - Blanketing instructions interface
+  - `current_weather_tab.py` - Real-time conditions display
+  - `forecast_tab.py` - 24-hour planning and strategy
+  - `about_tab.py` - App information and documentation
 - **Smart Configuration**: Dynamic UI that shows only missing configuration items
 - **Weather Integration**: Dual APIs for current conditions and 24-hour forecasts
 - **Decision Logic**: Temperature-based horse blanketing guidelines (20°F/40°F/60°F thresholds)
@@ -69,6 +74,35 @@ LOCATION_LONGITUDE=-74.0060             # Required: Stable location longitude
 - **Single Device Found**: Shows device info, suggests adding MAC to `.env`
 - **Multiple Devices**: Lists all devices, prompts user to select via environment config
 
+## Tab Module Architecture
+
+### Main Tab (`main_tab.py`)
+- **`render_main_tab(weather_data)`**: Primary blanketing instructions interface
+- **Temperature Logic**: 20°F/40°F/60°F threshold-based recommendations
+- **User-Focused**: Core stable hand guidance without technical details
+- **Weather-Dependent**: Real-time instructions based on current conditions
+
+### Current Weather Tab (`current_weather_tab.py`)
+- **`render_current_weather_tab(weather_data, error)`**: Live conditions display
+- **`handle_device_selection_error()`**: Device configuration UI
+- **Metrics Display**: 4-column weather data with timestamps
+- **Error Handling**: Rate limits, API failures, device selection
+- **Timezone Display**: Browser-aware timestamp formatting
+
+### Forecast Tab (`forecast_tab.py`)
+- **`render_forecast_tab(latitude, longitude, get_forecast_data_func)`**: 24-hour planning
+- **`display_forecast_period()`**: Helper for forecast period rendering
+- **Location Resolution**: NWS grid point conversion and location display
+- **Strategic Planning**: 24-hour blanketing recommendations
+- **Time-Based Tabs**: 8-hour periods for detailed planning
+
+### About Tab (`about_tab.py`)
+- **`render_about_tab()`**: App information and documentation
+- **Feature Overview**: Capabilities and technical specifications
+- **Configuration Guide**: Environment variable requirements
+- **Data Sources**: API details and refresh rates
+- **Blanketing Guidelines**: Temperature thresholds and decision factors
+
 ## Streamlit App Patterns (`streamlit_app.py`)
 
 ### Page Configuration
@@ -79,13 +113,27 @@ st.set_page_config(page_title="Stableman", page_icon="🐴")
 ### Configuration Integration
 ```python
 from configuration import check_configuration, display_configuration_ui, get_location_coordinates
+from main_tab import render_main_tab
+from current_weather_tab import render_current_weather_tab
+from forecast_tab import render_forecast_tab
+from about_tab import render_about_tab
 
 missing_config = check_configuration()
 if missing_config:
     display_configuration_ui(missing_config)  # Smart configuration UI
 else:
-    # Show full weather application
-    latitude, longitude = get_location_coordinates()
+    # Create four-tab interface
+    tab1, tab2, tab3, tab4 = st.tabs(["🐴 Main", "🌤️ Current Weather", "📊 24-Hour Forecast", "ℹ️ About"])
+    
+    with tab1:
+        render_main_tab(weather_data)
+    with tab2:
+        render_current_weather_tab(weather_data, error)
+    with tab3:
+        latitude, longitude = get_location_coordinates()
+        render_forecast_tab(latitude, longitude, get_forecast_data)
+    with tab4:
+        render_about_tab()
 ```
 
 ### Caching Strategy
@@ -94,8 +142,11 @@ else:
 ```
 
 ### UI Layout
-- **4-Column Current Weather**: Temperature | Feels Like | Humidity | Station
-- **3-Tab Forecast Display**: Next 8 Hours | 8-16 Hours | 16-24 Hours
+- **Four-Tab Structure**: Main | Current Weather | 24-Hour Forecast | About
+- **Main Tab**: Blanketing instructions based on current temperature
+- **Current Weather Tab**: 4-column metrics (Temperature | Feels Like | Humidity | Station)
+- **Forecast Tab**: 3 sub-tabs for time periods (Next 8 Hours | 8-16 Hours | 16-24 Hours)
+- **About Tab**: App features, configuration, data sources, and guidelines
 - **6-Column Forecast Details**: Time | Temperature | Humidity | Wind | Rain | Conditions
 - **Location Context**: City, state, coordinates with NWS office information
 - **Human-Readable Timestamps**: "February 16, 2026 at 02:30 PM EST" + "5 minutes ago"
@@ -136,6 +187,17 @@ python test_weather_api.py  # Standalone API test script
 
 ## Common Tasks
 
+### Adding New Tab Modules
+1. Create new tab file (e.g., `new_tab.py`) with `render_new_tab()` function
+2. Import module in `streamlit_app.py`
+3. Add tab to `st.tabs()` list
+4. Add `with tabN:` block calling render function
+
+### Modifying Tab Content
+1. Update specific tab module file (e.g., `main_tab.py`)
+2. Modify render function within the module
+3. No changes needed to main application file
+
 ### Adding New Configuration Variables
 1. Update `get_required_variables()` in `configuration.py`
 2. Add contextual help in `_display_contextual_help()`
@@ -143,12 +205,12 @@ python test_weather_api.py  # Standalone API test script
 
 ### Adding Weather Data Fields
 1. Update `ambient_weather.py` data structure in `get_latest_weather_data()`
-2. Add UI display in `streamlit_app.py` metrics section
-3. Consider blanketing logic impact
+2. Add UI display in `current_weather_tab.py` metrics section
+3. Consider blanketing logic impact in `main_tab.py`
 
 ### Adding Forecast Data Fields
 1. Update `weather_gov.py` data parsing in `get_24_hour_forecast()`
-2. Add display columns in `display_forecast_period()` function
+2. Add display columns in `display_forecast_period()` function in `forecast_tab.py`
 3. Consider strategic blanketing recommendations
 
 ### Modifying Cache Duration
@@ -156,7 +218,7 @@ python test_weather_api.py  # Standalone API test script
 - Forecast data: Change `ttl=1800` in forecast cache decorator
 
 ### Adding Blanketing Rules
-Update temperature threshold logic in blanketing instructions section
+Update temperature threshold logic in `main_tab.py` render function
 
 ### API Rate Limit Tuning
 Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
@@ -172,10 +234,14 @@ Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
 
 ## File Structure
 ```
-├── streamlit_app.py          # Main UI application with weather display
+├── streamlit_app.py          # Main application orchestration with tab management
 ├── configuration.py          # Environment variable validation and configuration UI
 ├── ambient_weather.py        # AmbientWeather.net API client for current conditions
 ├── weather_gov.py            # Weather.gov API client for 24-hour forecasts
+├── main_tab.py               # Blanketing instructions interface
+├── current_weather_tab.py    # Real-time conditions display
+├── forecast_tab.py           # 24-hour planning and strategic recommendations
+├── about_tab.py              # App information and documentation
 ├── test_weather_api.py       # Standalone API testing script
 ├── requirements.txt          # Python dependencies
 ├── .env                      # API keys and configuration (gitignored)

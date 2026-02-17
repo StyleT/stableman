@@ -9,6 +9,7 @@ from configuration import check_configuration, is_configuration_complete, displa
 from current_weather_tab import render_current_weather_tab
 from forecast_tab import render_forecast_tab
 from main_tab import render_main_tab
+from about_tab import render_about_tab
 
 # Load environment variables from .env file
 load_dotenv()
@@ -60,10 +61,10 @@ else:
     weather_data, error = get_weather_data()
 
     # Create main tabs
-    tab1, tab2, tab3 = st.tabs(["🐴 Main", "🌤️ Current Weather", "📊 24-Hour Forecast"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🐴 Main", "🌤️ Current Weather", "📊 24-Hour Forecast", "ℹ️ About"])
 
     with tab1:
-        # Main tab with blanketing instructions and about
+        # Main tab with blanketing instructions
         render_main_tab(weather_data)
 
     with tab2:
@@ -74,3 +75,7 @@ else:
         # 24-Hour Forecast Tab
         latitude, longitude = get_location_coordinates()
         render_forecast_tab(latitude, longitude, get_forecast_data)
+
+    with tab4:
+        # About Tab
+        render_about_tab()
