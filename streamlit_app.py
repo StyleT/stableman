@@ -319,7 +319,7 @@ else:
                         time_display = f"Hour {i+1}"
                         date_display = ""
                     
-                    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 3])
+                    col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 2, 1.5, 2.5])
                     
                     with col1:
                         st.write(f"**{time_display}**")
@@ -340,12 +340,13 @@ else:
                     
                     with col4:
                         wind = period.get('wind_speed', 'Calm')
-                        rain_chance = period.get('precipitation_chance', 0)
                         st.metric("💨 Wind", wind)
-                        if rain_chance > 0:
-                            st.caption(f"🌧️ {rain_chance}% rain")
                     
                     with col5:
+                        rain_chance = period.get('precipitation_chance', 0)
+                        st.metric("🌧️ Rain", f"{rain_chance}%")
+                    
+                    with col6:
                         forecast = period.get('short_forecast', '')
                         st.write(f"*{forecast}*")
                     
