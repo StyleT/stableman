@@ -10,6 +10,50 @@ from configuration import get_location_coordinates
 from blanketing_logic import BlanktetingLogic, get_care_instructions_by_category
 from timezone_utils import get_user_timezone
 
+# Configuration for phase-specific recommendation options
+PHASE_RECOMMENDATION_CONFIG = {
+    "Morning": {
+        "options": [
+            {
+                "name": "Conservative (until Night phase)",
+                "emoji": "🛡️",
+                "target_phase": "Night",  # Get forecast through entire Night phase
+                "description": "Covers until Night care",
+                "priority": "primary"
+            },
+            {
+                "name": "Normal (until Day phase)", 
+                "emoji": "⚡",
+                "target_phase": "Day",  # Get forecast until Day phase ends
+                "description": "Covers until Day care",
+                "priority": "alternative"
+            }
+        ]
+    },
+    "Day": {
+        "options": [
+            {
+                "name": "Primary Recommendation",
+                "emoji": "🎯", 
+                "target_phase": "Night",  # Standard next phase lookup
+                "description": "Until next care phase",
+                "priority": "primary"
+            }
+        ]
+    },
+    "Night": {
+        "options": [
+            {
+                "name": "Primary Recommendation",
+                "emoji": "🎯",
+                "target_phase": "Morning",  # Standard next phase lookup
+                "description": "Until next care phase", 
+                "priority": "primary"
+            }
+        ]
+    }
+}
+
 
 def get_phase_ui_elements(phase_name):
     """
@@ -34,7 +78,7 @@ def get_next_phase_forecast(current_phase, latitude, longitude, user_timezone=No
     Get forecast data until the next blanketing phase.
     
     Args:
-        current_phase: Current phase name ('Morning', 'Day', 'Evening')
+        current_phase: Current phase name ('Morning', 'Day', 'Night') or target phase for specific lookups
         latitude: Location latitude
         longitude: Location longitude
         user_timezone: User's timezone object for accurate time calculations
@@ -70,8 +114,13 @@ def get_next_phase_forecast(current_phase, latitude, longitude, user_timezone=No
             next_phase_time = now.replace(hour=15, minute=50, second=0, microsecond=0)
             if now.hour >= 15 and now.minute >= 50:
                 next_phase_time += timedelta(days=1)  # Next day if already past 3:50 PM
-        else:  # Night
-            # Night phase extends until morning phase ends at 11:00 AM next day
+        elif current_phase == 'Night':
+            # For Night phase targeting: go until midnight (stable hands re-blanket late, not early morning)
+            next_phase_time = now.replace(hour=23, minute=59, second=59, microsecond=0)
+            if now.hour >= 23 and now.minute >= 59:
+                next_phase_time += timedelta(days=1)  # Next day if already past midnight
+        else:
+            # Default Night phase extends until morning phase ends at 11:00 AM next day
             next_phase_time = now.replace(hour=11, minute=0, second=0, microsecond=0) + timedelta(days=1)
         
         # Filter forecast periods until next phase
@@ -106,6 +155,169 @@ def get_next_phase_forecast(current_phase, latitude, longitude, user_timezone=No
 
 
 
+
+
+def get_period_time_string(period, index, user_timezone):
+    """Helper function to get a formatted time string for a forecast period"""
+    time_str = period.get('name', '').strip()
+    
+    # If name is empty, try to format the actual time
+    if not time_str and period.get('time'):
+        try:
+            period_time = parser.parse(period['time'])
+            # Convert to user timezone if it's UTC
+            if period_time.tzinfo:
+                local_period_time = period_time.astimezone(user_timezone)
+                time_str = local_period_time.strftime("%b %d, %I:%M %p")  # e.g., "Feb 16, 02:30 PM"
+            else:
+                time_str = period_time.strftime("%b %d, %I:%M %p")
+        except:
+            time_str = f"Period {index+1}"
+    elif not time_str:  # If both name and time parsing failed
+        time_str = f"Period {index+1}"
+    
+    return time_str
+
+
+def render_phase_recommendations(phase_name, current_feels_like, housing_status, latitude, longitude, user_timezone):
+    """
+    Render blanketing recommendations for any phase using configuration.
+    
+    Args:
+        phase_name: Current phase name
+        current_feels_like: Current feels-like temperature
+        housing_status: Current housing status
+        latitude, longitude: Location coordinates
+        user_timezone: User's timezone
+    """
+    phase_config = PHASE_RECOMMENDATION_CONFIG.get(phase_name)
+    if not phase_config:
+        st.error(f"No configuration found for phase: {phase_name}")
+        return
+    
+    options = phase_config["options"]
+    decisions = []
+    forecast_data = []
+    
+    # Calculate decisions and forecast data for each option
+    for option in options:
+        try:
+            if option["target_phase"] == "Morning":  # Standard next phase lookup
+                min_forecast_feels_like, forecast_periods, next_phase_time = get_next_phase_forecast(
+                    phase_name, latitude, longitude, user_timezone
+                )
+            else:  # Look ahead to specific target phase
+                min_forecast_feels_like, forecast_periods, next_phase_time = get_next_phase_forecast(
+                    option["target_phase"], latitude, longitude, user_timezone
+                )
+            
+            blanketing_decision = BlanktetingLogic.make_blanketing_decision(
+                current_feels_like, min_forecast_feels_like, housing_status
+            )
+            
+            decisions.append((option, blanketing_decision, forecast_periods, next_phase_time))
+            forecast_data.append((forecast_periods, next_phase_time, option))
+            
+        except Exception as e:
+            st.error(f"Error calculating {option['name']}: {e}")
+            continue
+    
+    if not decisions:
+        return
+    
+    # Display recommendations
+    if len(decisions) == 1:
+        # Single option - show as primary recommendation
+        option, decision, forecast_periods, next_phase_time = decisions[0]
+        st.subheader(f"{option['emoji']} {option['name']}")
+        if decision.forecast_low is not None:
+            st.write(f"Based on current {current_feels_like}°F and forecast low {decision.forecast_low}°F {option['description'].lower()}:")
+        else:
+            st.write(f"Based on current temperature {current_feels_like}°F (forecast unavailable):")
+        
+        display_blanketing_recommendation_from_decision(decision)
+        
+        # Show forecast timeline
+        if forecast_periods and len(forecast_periods) > 0:
+            debug_info = f" (until {next_phase_time.strftime('%b %d, %I:%M %p')})" if next_phase_time else ""
+            with st.expander(f"📊 Forecast Timeline{debug_info}"):
+                for i, period in enumerate(forecast_periods):
+                    if period.get('feels_like') is not None:
+                        time_str = get_period_time_string(period, i, user_timezone)
+                        st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+    
+    else:
+        # Multiple options - show primary and alternatives
+        st.subheader(f"🌅 {phase_name} Blanketing Options")
+        
+        primary_option = None
+        alternative_options = []
+        
+        for option, decision, forecast_periods, next_phase_time in decisions:
+            if option["priority"] == "primary":
+                primary_option = (option, decision, forecast_periods, next_phase_time)
+            else:
+                alternative_options.append((option, decision, forecast_periods, next_phase_time))
+        
+        # Always show primary option
+        if primary_option:
+            option, decision, forecast_periods, next_phase_time = primary_option
+            st.write(f"**{option['emoji']} {option['name']}**")
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                st.metric("Effective Temperature", f"{decision.effective_temp}°F")
+            with col2:
+                forecast_text = f"~{decision.forecast_low}°F expected" if decision.forecast_low else option['description']
+                st.write(f"{forecast_text}")
+            
+            display_blanketing_recommendation_from_decision(decision)
+        
+        # Show alternatives only if they differ from primary
+        shown_alternatives = []
+        for option, decision, forecast_periods, next_phase_time in alternative_options:
+            if primary_option and decision.category != primary_option[1].category:
+                shown_alternatives.append((option, decision, forecast_periods, next_phase_time))
+                st.write("---")  # Visual separator
+                st.write(f"**{option['emoji']} Alternative: {option['name']}**")
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    st.metric("Effective Temperature", f"{decision.effective_temp}°F")
+                with col2:
+                    forecast_text = f"~{decision.forecast_low}°F expected" if decision.forecast_low else option['description']
+                    st.write(f"{forecast_text}")
+                
+                display_blanketing_recommendation_from_decision(decision)
+        
+        # Show forecast timelines
+        if shown_alternatives and primary_option:
+            # Show timelines for both primary and alternatives
+            option, decision, forecast_periods, next_phase_time = primary_option
+            if forecast_periods and len(forecast_periods) > 0:
+                debug_info = f" (until {next_phase_time.strftime('%b %d, %I:%M %p')})" if next_phase_time else ""
+                with st.expander(f"📊 {option['name']} Timeline{debug_info}"):
+                    for i, period in enumerate(forecast_periods):
+                        if period.get('feels_like') is not None:
+                            time_str = get_period_time_string(period, i, user_timezone)
+                            st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+            
+            for option, decision, forecast_periods, next_phase_time in shown_alternatives:
+                if forecast_periods and len(forecast_periods) > 0:
+                    debug_info = f" (until {next_phase_time.strftime('%b %d, %I:%M %p')})" if next_phase_time else ""
+                    with st.expander(f"📊 {option['name']} Timeline{debug_info}"):
+                        for i, period in enumerate(forecast_periods):
+                            if period.get('feels_like') is not None:
+                                time_str = get_period_time_string(period, i, user_timezone)
+                                st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+        elif primary_option:
+            # Show single timeline for primary option
+            option, decision, forecast_periods, next_phase_time = primary_option
+            if forecast_periods and len(forecast_periods) > 0:
+                debug_info = f" (until {next_phase_time.strftime('%b %d, %I:%M %p')})" if next_phase_time else ""
+                with st.expander(f"📊 Forecast Timeline{debug_info}"):
+                    for i, period in enumerate(forecast_periods):
+                        if period.get('feels_like') is not None:
+                            time_str = get_period_time_string(period, i, user_timezone)
+                            st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
 
 
 def render_main_tab(weather_data):
@@ -185,74 +397,21 @@ def render_main_tab(weather_data):
         )
         
         # Show temperature drop alert if applicable
-        if blanketing_decision.has_temp_drop_alert:
-            st.warning(f"⚠️ **Temperature Drop Alert**: Current {current_feels_like}°F → Forecast Low {min_forecast_feels_like}°F")
-            if blanketing_decision.step_down_applied:
-                st.info("🧠 **Smart Blanketing**: Reducing blanket weight to prevent overheating. Horses tolerate brief cold better than overblanketing.")
-        
-        # Special morning options if current phase is Morning
-        if phase_name == "Morning":
-            st.subheader("🌅 Morning Blanketing Options")
+        if min_forecast_feels_like is not None:
+            blanketing_decision = BlanktetingLogic.make_blanketing_decision(
+                current_feels_like, min_forecast_feels_like, housing_status
+            )
             
-            # Option 1: Conservative (blanket for whole day until night)
-            try:
-                evening_forecast_low, _, _ = get_next_phase_forecast("Day", latitude, longitude, user_timezone)
-                if evening_forecast_low is not None:
-                    conservative_decision = BlanktetingLogic.make_blanketing_decision(
-                        current_feels_like, evening_forecast_low, housing_status
-                    )
-                    
-                    st.write("**Option 1: Conservative (until Night phase)**")
-                    col1, col2 = st.columns([1, 1])
-                    with col1:
-                        st.metric("Effective Temperature", f"{conservative_decision.effective_temp}°F")
-                    with col2:
-                        st.write(f"Covers until Night care (~{evening_forecast_low}°F expected)")
-                    
-                    display_blanketing_recommendation_from_decision(conservative_decision)
-                    
-                    st.write("**Option 2: Normal (until Day phase)**")
-            except:
-                pass
+            if blanketing_decision.has_temp_drop_alert:
+                st.warning(f"⚠️ **Temperature Drop Alert**: Current {current_feels_like}°F → Forecast Low {min_forecast_feels_like}°F")
+                if blanketing_decision.step_down_applied:
+                    st.info("🧠 **Smart Blanketing**: Reducing blanket weight to prevent overheating. Horses tolerate brief cold better than overblanketing.")
         
-        # Display main recommendation
-        st.subheader("🎯 Primary Recommendation")
-        if blanketing_decision.forecast_low is not None:
-            st.write(f"Based on current {current_feels_like}°F and forecast low {blanketing_decision.forecast_low}°F until next care phase:")
-        else:
-            st.write(f"Based on current temperature {current_feels_like}°F (forecast unavailable):")
-        
-        display_blanketing_recommendation_from_decision(blanketing_decision)
-        
-        # Show forecast timeline if available
-        if forecast_periods and len(forecast_periods) > 0:
-            # Add debug info for Night phase
-            debug_info = ""
-            if next_phase_time:
-                debug_info = f" (targeting {next_phase_time.strftime('%b %d, %I:%M %p')})"
-            
-            with st.expander(f"📊 Forecast Timeline Until Next Care Phase{debug_info}"):
-                for i, period in enumerate(forecast_periods):
-                    if period.get('feels_like') is not None:
-                        # Get a meaningful time string, try to parse the actual time first
-                        time_str = period.get('name', '').strip()
-                        
-                        # If name is empty, try to format the actual time
-                        if not time_str and period.get('time'):
-                            try:
-                                period_time = parser.parse(period['time'])
-                                # Convert to user timezone if it's UTC
-                                if period_time.tzinfo:
-                                    local_period_time = period_time.astimezone(user_timezone)
-                                    time_str = local_period_time.strftime("%b %d, %I:%M %p")  # e.g., "Feb 16, 02:30 PM"
-                                else:
-                                    time_str = period_time.strftime("%b %d, %I:%M %p")
-                            except:
-                                time_str = f"Period {i+1}"
-                        elif not time_str:  # If both name and time parsing failed
-                            time_str = f"Period {i+1}"
-                            
-                        st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+        # Use generalized recommendation rendering for all phases
+        render_phase_recommendations(
+            phase_name, current_feels_like, housing_status, 
+            latitude, longitude, user_timezone
+        )
     else:
         st.info("Connect weather data to see personalized blanketing recommendations")
 
