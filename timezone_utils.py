@@ -1,35 +1,33 @@
 """
 Timezone utilities for Stableman application.
-Provides client-side timezone detection using browser JavaScript.
+Provides client-side timezone detection using Streamlit's native context.
 """
 import streamlit as st
 import pytz
-from streamlit_javascript import st_javascript
 
 
 def get_user_timezone():
     """
-    Get the user's local timezone from their browser.
+    Get the user's local timezone from Streamlit context.
     
     Returns:
         pytz.timezone: User's local timezone object, defaults to UTC if detection fails
     """
-    # Use session state to store timezone once detected
-    if 'user_timezone' not in st.session_state:
-        # Get timezone using JavaScript in the browser
-        timezone_name = st_javascript("""
-            const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            console.log('User timezone:', userTimezone);
-            return userTimezone;
-        """, key="user_timezone_detector")
+    try:
+        # Get timezone from Streamlit's context
+        browser_timezone = st.context.timezone
+        print(f"DEBUG: Streamlit context timezone: {browser_timezone}")
         
-        if timezone_name and timezone_name != "":
-            st.session_state.user_timezone = pytz.timezone(timezone_name)
+        if browser_timezone:
+            timezone_obj = pytz.timezone(browser_timezone)
+            print(f"DEBUG: Successfully created timezone object: {timezone_obj}")
+            return timezone_obj
         else:
-            # Fallback if JavaScript doesn't return a timezone
-            st.session_state.user_timezone = pytz.UTC
-    
-    return st.session_state.user_timezone
+            print("DEBUG: No timezone in context, falling back to UTC")
+            return pytz.UTC
+    except Exception as e:
+        print(f"DEBUG: Error getting timezone from context: {e}")
+        return pytz.UTC
 
 
 def format_timestamp(timestamp_ms, timezone_obj=None):
