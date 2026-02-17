@@ -75,6 +75,69 @@ def get_next_phase_forecast(current_phase, latitude, longitude):
         return None, [], None
 
 
+def determine_housing_status(weather_data, forecast_periods):
+    """
+    Automatically determine housing status based on weather conditions.
+    
+    Rules:
+    - If chance of rain > 10% - horses stay IN for duration + 12h if rained > 0.1in
+    - Equine heat index = Temp °F + % Relative Humidity
+      - > 150 in consistently cloudy weather - horses stay IN for the day
+      - > 120 in sunny weather - horses stay IN for the day
+    - Otherwise - horses are OUT
+    
+    Args:
+        weather_data: Current weather data
+        forecast_periods: Forecast data periods
+    
+    Returns:
+        tuple: (housing_status, reason, user_selectable)
+    """
+    if not weather_data:
+        return "Horses OUT", "No weather data available", True
+    
+    temp = weather_data.get('temperature')
+    humidity = weather_data.get('humidity')
+    
+    # Calculate equine heat index if we have both temperature and humidity
+    if temp is not None and humidity is not None and temp > 75:
+        equine_heat_index = temp + humidity
+        
+        # Check for high heat conditions
+        # Note: We'll need to determine if weather is sunny/cloudy from forecast data
+        # For now, assume sunny unless we can detect cloudy conditions
+        is_cloudy = False
+        
+        # Check forecast for cloudy conditions
+        if forecast_periods:
+            cloudy_periods = 0
+            total_periods = 0
+            for period in forecast_periods[:4]:  # Check next 4 periods
+                forecast = period.get('short_forecast', '').lower()
+                if 'cloud' in forecast or 'overcast' in forecast or 'partly' in forecast:
+                    cloudy_periods += 1
+                total_periods += 1
+            
+            if total_periods > 0 and cloudy_periods / total_periods > 0.5:
+                is_cloudy = True
+        
+        # Apply heat index rules
+        if is_cloudy and equine_heat_index > 150:
+            return "Horses IN", f"High heat index ({equine_heat_index:.0f}) in cloudy weather", False
+        elif not is_cloudy and equine_heat_index > 120:
+            return "Horses IN", f"High heat index ({equine_heat_index:.0f}) in sunny weather", False
+    
+    # Check for rain conditions in forecast
+    if forecast_periods:
+        for period in forecast_periods:
+            rain_chance = period.get('precipitation_chance', 0)
+            if rain_chance > 10:
+                return "Horses IN", f"Rain expected ({rain_chance}% chance)", False
+    
+    # Default to horses OUT with user choice
+    return "Horses OUT", "Good conditions for outdoor housing", True
+
+
 def get_current_phase():
     """
     Determine the current blanketing phase based on time of day.
@@ -154,8 +217,26 @@ def render_main_tab(weather_data):
                 st.metric("Forecast Low", "Loading...")
         
         with col3:
-            # Housing status selection
-            housing_status = st.selectbox("Housing Status", ["Horses OUT", "Horses IN"], key="housing_status")
+            # Determine housing status automatically or allow user selection
+            auto_housing_status, housing_reason, user_selectable = determine_housing_status(
+                weather_data, forecast_periods
+            )
+            
+            if user_selectable:
+                # Show selector when conditions allow user choice
+                housing_status = st.selectbox(
+                    "Housing Status", 
+                    ["Horses OUT", "Horses IN"], 
+                    index=0 if auto_housing_status == "Horses OUT" else 1,
+                    key="housing_status"
+                )
+                if housing_reason:
+                    st.caption(f"💡 {housing_reason}")
+            else:
+                # Auto-determined housing with explanation
+                st.metric("Housing Status", auto_housing_status.split()[-1])  # Show just "OUT" or "IN"
+                st.caption(f"🔒 {housing_reason}")
+                housing_status = auto_housing_status
         
         # Determine blanketing thresholds based on housing
         if housing_status == "Horses OUT":

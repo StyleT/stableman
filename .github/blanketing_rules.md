@@ -14,6 +14,31 @@
 - **☀️ Day** (11:00 AM - 3:50 PM): Midday monitoring and adjustments
 - **🌙 Night** (3:50 PM - 11:00 AM next day): Overnight care period
 
+## Housing Status Determination
+
+### Automatic Rules (System Overrides)
+The system automatically determines housing status based on weather conditions:
+
+#### **🌧️ Rain Protection**
+- **Chance of rain > 10%**: Horses automatically stay IN for duration of rain
+- **Future enhancement**: +12 hours if accumulated rainfall > 0.1 inches
+
+#### **🌡️ Equine Heat Index Protection** (Only when temperature > 75°F)
+- **Formula**: Equine Heat Index = Temperature °F + % Relative Humidity
+- **Cloudy Weather**: Heat index > 150 → Horses IN for the day
+- **Sunny Weather**: Heat index > 120 → Horses IN for the day
+- **Cloud Detection**: Analyzes forecast for "cloud", "overcast", "partly" conditions
+
+#### **💡 User Choice Available**
+- When conditions don't trigger automatic rules
+- Default suggestion: "Horses OUT" 
+- User can override with dropdown selector
+
+### UI Behavior
+- **🔒 Locked Status**: Auto-determined with explanation (no user choice)
+- **💡 Suggested Status**: User dropdown with helpful guidance
+- **Status Display**: Shows "OUT" or "IN" with reasoning
+
 ## Blanketing Thresholds
 
 ### Horses OUT (Outdoor/Pasture)
@@ -65,7 +90,8 @@
 
 ### Code Location
 - **Primary Logic**: `main_tab.py` → `render_main_tab()` function
-- **Thresholds**: Lines ~158-163 in `main_tab.py`
+- **Housing Determination**: `determine_housing_status()` function
+- **Thresholds**: Lines ~200+ in `main_tab.py`
 - **Recommendations**: `display_blanketing_recommendation()` function
 - **Forecast Logic**: `get_next_phase_forecast()` function
 
@@ -76,6 +102,9 @@ thresholds = {'light': 50, 'medium': 40, 'heavy': 30}
 
 # Horses IN thresholds  
 thresholds = {'light': 45, 'medium': 35, 'heavy': 25}
+
+# Equine Heat Index (when temp > 75°F)
+equine_heat_index = temperature + humidity
 ```
 
 ### Temperature Calculation
@@ -117,6 +146,7 @@ effective_temp = min(current_feels_like, min_forecast_feels_like)
 4. **Forecast logic changes**
 5. **Phase timing adjustments**
 6. **Animal-specific rule updates**
+7. **Housing determination rules** changes
 
 ### Validation Checklist
 - [ ] Thresholds match `main_tab.py` implementation
@@ -124,9 +154,10 @@ effective_temp = min(current_feels_like, min_forecast_feels_like)
 - [ ] Phase timing matches `get_current_phase()` logic
 - [ ] Forecast integration matches `get_next_phase_forecast()` behavior
 - [ ] Anti-overheating logic documented correctly
+- [ ] Housing determination matches `determine_housing_status()` function
 
 ---
 
 **Last Updated**: February 16, 2026  
 **Synchronized with**: `main_tab.py` implementation  
-**Version**: 2.0 (Forecast-aware with Night phase)
+**Version**: 2.1 (Forecast-aware with Night phase and automatic housing determination)
