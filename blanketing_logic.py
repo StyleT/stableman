@@ -143,23 +143,198 @@ class BlanktetingLogic:
         else:
             return 'heavy'
     
+    @staticmethod
+    def temperature_to_blanketing_score(feels_like_temp: float, housing_status: str) -> int:
+        """
+        Convert a temperature to a blanketing score (0-3).
+        
+        Args:
+            feels_like_temp: Feels-like temperature in Fahrenheit
+            housing_status: 'Horses OUT' or 'Horses IN'
+            
+        Returns:
+            int: Blanketing score (0=none, 1=light, 2=medium, 3=heavy)
+        """
+        # Use appropriate thresholds based on housing status
+        if 'OUT' in housing_status:
+            thresholds = BlanktetingLogic.THRESHOLDS_OUT
+        else:
+            thresholds = BlanktetingLogic.THRESHOLDS_IN
+        
+        if feels_like_temp >= thresholds['light']:
+            return 0  # No blanket
+        elif feels_like_temp >= thresholds['medium']:
+            return 1  # Light
+        elif feels_like_temp >= thresholds['heavy']:
+            return 2  # Medium
+        else:
+            return 3  # Heavy
+    
+    @staticmethod
+    def blanketing_score_to_category(score: float) -> str:
+        """
+        Convert an averaged blanketing score to a category.
+        
+        Args:
+            score: Averaged blanketing score (0.0-3.0)
+            
+        Returns:
+            str: Blanketing category ('none', 'light', 'medium', 'heavy')
+        """
+        if score < 0.5:
+            return 'none'
+        elif score < 1.5:
+            return 'light'
+        elif score < 2.5:
+            return 'medium'
+        else:
+            return 'heavy'
+    
+    @staticmethod
+    def analyze_forecast_temperatures(forecast_periods: List[Dict], housing_status: str) -> Tuple[float, str, List[Dict]]:
+        """
+        Analyze forecast temperatures using hourly averaging approach.
+        
+        Args:
+            forecast_periods: List of forecast period dictionaries
+            housing_status: Current housing status
+            
+        Returns:
+            tuple: (average_score, recommended_category, period_analysis)
+        """
+        if not forecast_periods:
+            return 0.0, 'none', []
+        
+        period_analysis = []
+        scores = []
+        
+        for period in forecast_periods:
+            feels_like = period.get('feels_like')
+            if feels_like is not None:
+                score = BlanktetingLogic.temperature_to_blanketing_score(feels_like, housing_status)
+                category = BlanktetingLogic.blanketing_score_to_category(score)
+                
+                period_analysis.append({
+                    'time': period.get('time', 'Unknown'),
+                    'name': period.get('name', ''),
+                    'feels_like': feels_like,
+                    'score': score,
+                    'category': category,
+                    'short_forecast': period.get('short_forecast', '')
+                })
+                
+                scores.append(score)
+        
+        # Calculate average score
+        if scores:
+            average_score = sum(scores) / len(scores)
+            recommended_category = BlanktetingLogic.blanketing_score_to_category(average_score)
+        else:
+            average_score = 0.0
+            recommended_category = 'none'
+        
+        return average_score, recommended_category, period_analysis
+    
     @classmethod
     def make_blanketing_decision(
+        cls,
+        current_feels_like: float,
+        min_forecast_feels_like: Optional[float],
+        housing_status: str,
+        forecast_periods: Optional[List[Dict]] = None
+    ) -> BlanktetingDecision:
+        """
+        Make a blanketing decision based on current temperature and forecast analysis.
+        
+        Args:
+            current_feels_like: Current feels-like temperature
+            min_forecast_feels_like: Minimum forecast feels-like (for backward compatibility)
+            housing_status: Housing status ('Horses OUT' or 'Horses IN')
+            forecast_periods: Optional list of forecast periods for improved analysis
+            
+        Returns:
+            BlanktetingDecision object with recommendation details
+        """
+        # Use improved forecast analysis if periods are available
+        if forecast_periods and len(forecast_periods) > 0:
+            # Get current temperature recommendation
+            current_score = cls.temperature_to_blanketing_score(
+                current_feels_like, housing_status
+            )
+            current_category = cls.blanketing_score_to_category(current_score)
+            
+            # Analyze forecast temperatures
+            avg_forecast_score, forecast_category, period_analysis = cls.analyze_forecast_temperatures(
+                forecast_periods, housing_status
+            )
+            
+            # Combine current and forecast analysis
+            # Weight current conditions at 30% and forecast at 70%
+            combined_score = ((current_score * 0.3) + (avg_forecast_score * 0.7)) / 2  # Normalize to 0-3 scale
+            recommended_category = cls.blanketing_score_to_category(combined_score)
+            
+            # Check for temperature drop alert (significant change from current to forecast)
+            temp_drop_alert = False
+            step_down_applied = False
+            temp_drop_amount = None
+            
+            if min_forecast_feels_like is not None:
+                temp_drop_amount = current_feels_like - min_forecast_feels_like
+                if temp_drop_amount >= cls.TEMP_DROP_ALERT_THRESHOLD:
+                    temp_drop_alert = True
+                    
+                    # Apply step-down logic for anti-overheating
+                    if recommended_category == 'heavy':
+                        recommended_category = 'medium'
+                        step_down_applied = True
+                    elif recommended_category == 'medium':
+                        recommended_category = 'light'
+                        step_down_applied = True
+            
+            # Calculate effective temperature (for display purposes)
+            if avg_forecast_score > 0:
+                # Use a weighted average for effective temperature display
+                effective_temp = min(current_feels_like, min_forecast_feels_like or current_feels_like)
+            else:
+                effective_temp = current_feels_like
+            
+            reasoning = f"Hourly analysis: Current {current_category} ({current_score}), Forecast avg {forecast_category} ({avg_forecast_score:.1f}), Combined {recommended_category} ({combined_score:.1f})"
+            
+            return BlanktetingDecision(
+                category=recommended_category,
+                housing_status=housing_status,
+                effective_temp=effective_temp,
+                current_temp=current_feels_like,
+                forecast_low=min_forecast_feels_like,
+                has_temp_drop_alert=temp_drop_alert,
+                temp_drop_amount=temp_drop_amount,
+                step_down_applied=step_down_applied,
+                reasoning=reasoning
+            )
+        
+        # Fallback to original logic if no forecast periods available
+        else:
+            return cls._make_legacy_blanketing_decision(
+                current_feels_like, min_forecast_feels_like, housing_status
+            )
+    
+    @classmethod
+    def _make_legacy_blanketing_decision(
         cls,
         current_feels_like: float,
         min_forecast_feels_like: Optional[float],
         housing_status: str
     ) -> BlanktetingDecision:
         """
-        Make comprehensive blanketing decision with anti-overheating logic.
+        Legacy blanketing decision logic (minimum temperature approach).
         
         Args:
             current_feels_like: Current feels-like temperature
-            min_forecast_feels_like: Minimum forecast feels-like temperature (can be None)
-            housing_status: 'Horses OUT' or 'Horses IN'
+            min_forecast_feels_like: Minimum forecast feels-like temperature
+            housing_status: Housing status ('Horses OUT' or 'Horses IN')
             
         Returns:
-            BlanktetingDecision object with complete recommendation
+            BlanktetingDecision object with recommendation details
         """
         # Determine effective temperature for blanketing decision
         if min_forecast_feels_like is not None:

@@ -127,7 +127,7 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
                 )
             
             blanketing_decision = BlanktetingLogic.make_blanketing_decision(
-                current_feels_like, min_forecast_feels_like, housing_status
+                current_feels_like, None, housing_status, forecast_periods
             )
             
             decisions.append((option, blanketing_decision, forecast_periods, next_phase_time))
@@ -268,21 +268,21 @@ def render_main_tab(weather_data):
             )
         except Exception as e:
             st.error(f"Error loading forecast: {str(e)}")
-            min_forecast_feels_like = None
             forecast_periods = []
             next_phase_time = None
         
-        # Display current and forecast temperatures
+        # Display current temperature and forecast summary
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
             st.metric("Current Feels Like", f"{current_feels_like}°F")
         
         with col2:
-            if min_forecast_feels_like is not None:
-                st.metric("Forecast Low", f"{min_forecast_feels_like}°F", 
-                         delta=f"{min_forecast_feels_like - current_feels_like}°F")
+            if forecast_periods:
+                # Show forecast period count and time range
+                st.metric("Forecast Periods", f"{len(forecast_periods)} hours", 
+                         help="Hours of forecast data analyzed for blanketing decision")
             else:
-                st.metric("Forecast Low", "Loading...")
+                st.metric("Forecast Data", "Loading...")
         
         with col3:
             # Determine housing status using business logic
@@ -306,21 +306,16 @@ def render_main_tab(weather_data):
                 st.caption(f"🔒 {housing_decision.reason}")
                 housing_status = housing_decision.status
         
-        # Make blanketing decision using business logic
+        # Make blanketing decision using improved temperature analysis
         blanketing_decision = BlanktetingLogic.make_blanketing_decision(
-            current_feels_like, min_forecast_feels_like, housing_status
+            current_feels_like, None, housing_status, forecast_periods
         )
         
         # Show temperature drop alert if applicable
-        if min_forecast_feels_like is not None:
-            blanketing_decision = BlanktetingLogic.make_blanketing_decision(
-                current_feels_like, min_forecast_feels_like, housing_status
-            )
-            
-            if blanketing_decision.has_temp_drop_alert:
-                st.warning(f"⚠️ **Temperature Drop Alert**: Current {current_feels_like}°F → Forecast Low {min_forecast_feels_like}°F")
-                if blanketing_decision.step_down_applied:
-                    st.info("🧠 **Smart Blanketing**: Reducing blanket weight to prevent overheating. Horses tolerate brief cold better than overblanketing.")
+        if blanketing_decision.has_temp_drop_alert:
+            st.warning(f"⚠️ **Temperature Drop Alert**: Current {current_feels_like}°F → Forecast Low {blanketing_decision.forecast_low}°F")
+            if blanketing_decision.step_down_applied:
+                st.info("🧠 **Smart Blanketing**: Reducing blanket weight to prevent overheating. Horses tolerate brief cold better than overblanketing.")
         
         # Use generalized recommendation rendering for all phases
         render_phase_recommendations(

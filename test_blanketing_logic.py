@@ -5,6 +5,7 @@ Ensures that blanketing decisions remain consistent and correct
 across future modifications to the algorithm.
 """
 import unittest
+from datetime import datetime
 from blanketing_logic import BlanktetingLogic, HousingDecision, BlanktetingDecision, get_care_instructions_by_category
 
 
@@ -610,6 +611,123 @@ class TestGetNextPhaseForecast(unittest.TestCase):
             self.assertIsNone(min_feels_like)
             self.assertEqual(periods, [])
             self.assertIsNone(next_phase_time)
+
+
+class TestImprovedTemperatureAnalysis(unittest.TestCase):
+    """Test improved temperature analysis using hourly averaging instead of minimum temperature"""
+
+    def test_temperature_to_blanketing_score(self):
+        """Test conversion of feels-like temperature to blanketing score (0-3)"""
+        # Test OUT thresholds
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(55, 'Horses OUT'), 0)  # Above light threshold (50)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(45, 'Horses OUT'), 1)  # Between light (50) and medium (40)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(35, 'Horses OUT'), 2)  # Between medium (40) and heavy (30)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(25, 'Horses OUT'), 3)  # Below heavy threshold (30)
+        
+        # Test IN thresholds (5 degrees warmer)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(50, 'Horses IN'), 0)   # Above light threshold (45)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(40, 'Horses IN'), 1)   # Between light (45) and medium (35)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(30, 'Horses IN'), 2)   # Between medium (35) and heavy (25)
+        self.assertEqual(BlanktetingLogic.temperature_to_blanketing_score(20, 'Horses IN'), 3)   # Below heavy threshold (25)
+
+    def test_blanketing_score_to_category(self):
+        """Test conversion of blanketing score back to category"""
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(0), 'none')
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(1), 'light')
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(2), 'medium')
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(3), 'heavy')
+        
+        # Test edge cases with rounding
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(0.4), 'none')   # Rounds to 0
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(0.6), 'light')  # Rounds to 1
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(1.4), 'light')  # Rounds to 1
+        self.assertEqual(BlanktetingLogic.blanketing_score_to_category(1.6), 'medium') # Rounds to 2
+
+    def test_analyze_forecast_temperatures(self):
+        """Test hourly averaging of blanketing scores"""
+        # Create forecast periods matching corrected scoring
+        forecast_periods = [
+            {'feels_like': 32, 'start_time': datetime(2024, 1, 1, 9, 0)},  # Medium (2) - above 30°F
+            {'feels_like': 53, 'start_time': datetime(2024, 1, 1, 10, 0)}, # None (0) - above 50°F
+            {'feels_like': 42, 'start_time': datetime(2024, 1, 1, 11, 0)}, # Light (1) - above 40°F
+        ]
+        
+        avg_score, _, _ = BlanktetingLogic.analyze_forecast_temperatures(forecast_periods, 'Horses OUT')
+        
+        # Expected: (2 + 0 + 1) / 3 = 1.0
+        expected_score = (2 + 0 + 1) / 3
+        self.assertAlmostEqual(avg_score, expected_score, places=2)
+
+    def test_analyze_forecast_temperatures_empty_list(self):
+        """Test forecast analysis with empty forecast list"""
+        avg_score, _, _ = BlanktetingLogic.analyze_forecast_temperatures([], 'Horses OUT')
+        self.assertEqual(avg_score, 0)
+
+    def test_analyze_forecast_temperatures_different_housing(self):
+        """Test forecast analysis with different housing settings"""
+        forecast_periods = [
+            {'feels_like': 40, 'start_time': datetime(2024, 1, 1, 9, 0)},
+            {'feels_like': 30, 'start_time': datetime(2024, 1, 1, 10, 0)},
+        ]
+        
+        # OUT: 40F=light(1), 30F=medium(2) -> avg = 1.5
+        avg_out, _, _ = BlanktetingLogic.analyze_forecast_temperatures(forecast_periods, 'Horses OUT')
+        expected_out = (1 + 2) / 2
+        self.assertAlmostEqual(avg_out, expected_out, places=2)
+        
+        # IN: 40F=light(1), 30F=medium(2) -> avg = 1.5
+        avg_in, _, _ = BlanktetingLogic.analyze_forecast_temperatures(forecast_periods, 'Horses IN')
+        expected_in = (1 + 2) / 2
+        self.assertAlmostEqual(avg_in, expected_in, places=2)
+
+    def test_improved_blanketing_decision_with_current_weighting(self):
+        """Test that current weather gets 30% weight, forecast gets 70% weight"""
+        current_feels_like = 25  # Heavy blanketing (3)
+        
+        # Forecast all warm (no blanketing needed - 0)
+        forecast_periods = [
+            {'feels_like': 60, 'start_time': datetime(2024, 1, 1, 10, 0)},
+            {'feels_like': 65, 'start_time': datetime(2024, 1, 1, 11, 0)},
+        ]
+        
+        decision = BlanktetingLogic.make_blanketing_decision(
+            current_feels_like, None, 'Horses OUT', forecast_periods=forecast_periods
+        )
+        
+        # Expected weighted score: 3 * 0.3 + 0 * 0.7 = 0.9
+        # Should round to 1 = light blanketing
+        self.assertEqual(decision.category, 'light')
+
+    def test_improved_blanketing_decision_forecast_dominates(self):
+        """Test that sustained cold forecast overrides warm current conditions"""
+        current_feels_like = 60  # No blanketing (0)
+        
+        # Forecast consistently cold (heavy blanketing - 3)
+        forecast_periods = [
+            {'feels_like': 20, 'start_time': datetime(2024, 1, 1, 10, 0)},
+            {'feels_like': 25, 'start_time': datetime(2024, 1, 1, 11, 0)},
+            {'feels_like': 22, 'start_time': datetime(2024, 1, 1, 12, 0)},
+        ]
+        
+        decision = BlanktetingLogic.make_blanketing_decision(
+            current_feels_like, None, 'Horses OUT', forecast_periods=forecast_periods
+        )
+        
+        # Expected weighted score: 0 * 0.3 + 3 * 0.7 = 2.1
+        # Should round to 2 = medium blanketing
+        self.assertEqual(decision.category, 'medium')
+
+    def test_improved_blanketing_decision_no_forecast_fallback(self):
+        """Test that logic falls back gracefully when no forecast provided"""
+        current_feels_like = 35  # Medium blanketing for OUT
+        
+        # No forecast periods provided - should use current conditions only
+        decision = BlanktetingLogic.make_blanketing_decision(
+            current_feels_like, None, 'Horses OUT', forecast_periods=None
+        )
+        
+        self.assertEqual(decision.category, 'medium')
+        self.assertEqual(decision.current_temp, 35)
 
 
 if __name__ == '__main__':
