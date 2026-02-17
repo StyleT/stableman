@@ -12,15 +12,21 @@ A basic Streamlit application.
 ### Installation
 
 1. Clone this repository:
-```bash
-git clone https://github.com/StyleT/stableman.git
-cd stableman
-```
+    ```bash
+    git clone https://github.com/StyleT/stableman.git
+    cd stableman
+    ```
 
-2. Install the required dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. Create and activate a virtual environment:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+1. Install the required dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ### Running the App
 
