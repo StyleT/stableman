@@ -1,89 +1,122 @@
 # Stableman - Copilot Instructions 🐴
 
 ## Project Overview
-Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with Weather APIs to deliver real-time, condition-specific blanketing recommendations. The project follows a minimal single-file architecture with straightforward deployment to Streamlit Cloud.
+Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with AmbientWeather.net API to deliver real-time, condition-specific blanketing recommendations with intelligent caching and rate limiting.
 
 ## Architecture & Structure
-- **Single-file app**: All functionality is contained in `streamlit_app.py`
-- **Weather Integration**: Connects to Weather APIs for real-time conditions
-- **Decision Logic**: Implements horse blanketing guidelines based on weather data
-- **Minimal dependencies**: Core requirements in `requirements.txt` (Streamlit + weather API client)
-- **Virtual environment workflow**: Uses `.venv` for local development
-- **Cloud-ready**: Configured for easy Streamlit Cloud deployment
+- **Single-file UI**: Main app logic in `streamlit_app.py`
+- **Separate API Module**: Weather API client in `ambient_weather.py` for reusability
+- **Weather Integration**: Real-time data from AmbientWeather.net with retry logic and rate limiting
+- **Decision Logic**: Temperature-based horse blanketing guidelines (20°F/40°F/60°F thresholds)
+- **Smart Caching**: 1-minute cache TTL to balance freshness with API rate limits
+- **MAC Address Optimization**: Direct device access when configured, avoiding device enumeration
 
-## Development Workflow
-
-### Local Development
-```bash
-# Setup (first time)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Daily development
-source .venv/bin/activate
-streamlit run streamlit_app.py
+## Key Dependencies
+```
+streamlit>=1.30.0           # Core web framework
+requests>=2.28.0            # HTTP client for weather API
+python-dotenv>=0.19.0       # Environment variable management
+pytz>=2021.1                # Timezone handling for timestamps
 ```
 
-### Testing Changes
-- Run locally at `http://localhost:8501` for immediate feedback
-- Streamlit auto-reloads on file changes (hot reload)
-- Use `st.rerun()` for programmatic page refreshes
+## Environment Configuration
+Required environment variables in `.env` file:
+```bash
+AMBIENT_API_KEY=<your_api_key>          # Required: AmbientWeather.net API key
+AMBIENT_APP_KEY=<your_application_key>   # Required: AmbientWeather.net app key
+AMBIENT_MAC_ADDRESS=<device_mac>         # Optional but recommended for performance
+```
 
-## Streamlit Patterns Used
+## Weather API Integration (`ambient_weather.py`)
+
+### Key Classes & Methods:
+- **`AmbientWeatherAPI`**: Main client class with rate limiting (1.1s delays between calls)
+- **`get_latest_weather_data()`**: Returns formatted weather data with temperature, feels-like, humidity
+- **`create_api_client()`**: Factory function that loads environment variables
+- **Rate Limiting**: Automatic 1-second waits + 3-retry logic for 429 errors
+- **MAC Address Optimization**: Skips device listing when `AMBIENT_MAC_ADDRESS` is set
+
+### Device Selection Logic:
+- **MAC Provided**: Direct API call to specific device (1 API call)
+- **Single Device Found**: Shows device info, suggests adding MAC to `.env`
+- **Multiple Devices**: Lists all devices, prompts user to select via environment config
+
+## Streamlit App Patterns (`streamlit_app.py`)
 
 ### Page Configuration
 ```python
 st.set_page_config(page_title="Stableman", page_icon="🐴")
 ```
-- Set at the very beginning of the app
-- Defines browser tab title and favicon
 
-### Component Examples in Codebase
-- **Text Input**: `st.text_input()` with conditional display
-- **Slider**: `st.slider()` with min/max/default values
-- **Selectbox**: `st.selectbox()` with predefined options
-- **Button with Animation**: `st.button()` triggers `st.balloons()`
+### Caching Strategy
+```python
+@st.cache_data(ttl=60)  # 1-minute cache for weather data
+```
 
-### Layout Structure
-1. Page config → Title → About section
-2. Interactive components with immediate feedback
-3. Divider → Footer info with external links
+### UI Layout
+- **4-Column Metrics**: Temperature | Feels Like | Humidity | Station
+- **Human-Readable Timestamps**: "February 16, 2026 at 02:30 PM UTC" + "5 minutes ago"
+- **Error Handling**: Specific UI for device selection, rate limits, and API errors
+
+### Blanketing Logic
+Temperature-based recommendations:
+```python
+if temp < 20: "Heavy Blanket Required" (300g+ fill)
+elif temp < 40: "Medium Blanket Recommended" (150-250g)
+elif temp < 60: "Light Blanket Optional"
+else: "No Blanket Needed"
+```
+
+## Development Workflow
+
+### Local Setup
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # Add your API keys
+streamlit run streamlit_app.py
+```
+
+### Testing Weather API
+```bash
+python test_weather_api.py  # Standalone API test script
+```
 
 ## Project-Specific Conventions
-- **Emoji Usage**: Heavy use of emojis in titles and messages (🐴, 👋, 🎉, 💡)
-- **Immediate Feedback**: All inputs show results immediately (no submit buttons)
-- **Success Animations**: Use `st.balloons()` and `st.success()` for positive feedback
-- **Information Display**: Use `st.info()` for helpful tips and external links
+- **Emoji Usage**: Extensive use for visual clarity (🐴🌡️💧📍⏰)
+- **Error Messages**: User-friendly with actionable guidance
+- **API Efficiency**: Prefer cached data over fresh API calls
+- **Configuration Guidance**: Auto-generated `.env` suggestions for device setup
+- **Timestamp Handling**: Unix milliseconds → human-readable + relative time
 
 ## Common Tasks
 
-### Adding New Components
-Add between existing components in `streamlit_app.py`, maintaining the pattern:
-```python
-# Component
-result = st.component_name("label", parameters)
-if result:
-    st.write(f"Display: {result}")
+### Adding Weather Data Fields
+1. Update `ambient_weather.py` data structure in `get_latest_weather_data()`
+2. Add UI display in `streamlit_app.py` metrics section
+3. Consider blanketing logic impact
+
+### Modifying Cache Duration
+Change `ttl=60` in `@st.cache_data(ttl=60)` decorator
+
+### Adding Blanketing Rules
+Update temperature threshold logic in blanketing instructions section
+
+### API Rate Limit Tuning
+Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
+
+## External Integration
+- **AmbientWeather.net API**: Real-time weather station data
+- **Rate Limits**: 1 request/second per API key, 3 requests/second per developer key
+- **Deployment**: Optimized for Streamlit Cloud with environment variable support
+
+## File Structure
 ```
-
-### Deployment
-- Push to GitHub → Deploy via [share.streamlit.io](https://share.streamlit.io)
-- Main file path: `streamlit_app.py`
-- Automatic dependency detection from `requirements.txt`
-
-### Styling & UX
-- Use `st.divider()` to separate sections
-- Combine `st.header()` and `st.write()` for content sections
-- Wrap helpful information in `st.info()` with markdown links
-
-## Key Files
-- [`streamlit_app.py`](streamlit_app.py) - Main application (single source of truth)
-- [`requirements.txt`](requirements.txt) - Dependencies (keep minimal)
-- [`README.md`](README.md) - Setup and deployment instructions
-
-## External Dependencies
-- **Streamlit**: Core framework, version pinned to >=1.30.0
-- **Weather API**: External service integration for real-time weather data
-- **Python**: Requires 3.8+ (specified in README)
-- **Streamlit Cloud**: Deployment target (no additional config needed)
+├── streamlit_app.py          # Main UI application
+├── ambient_weather.py        # Reusable weather API client
+├── test_weather_api.py       # Standalone API testing
+├── requirements.txt          # Python dependencies
+├── .env                      # API keys and configuration (gitignored)
+└── .github/copilot-instructions.md  # This file
+```
