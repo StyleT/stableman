@@ -10,6 +10,24 @@ from configuration import get_location_coordinates
 from blanketing_logic import BlanktetingLogic, get_care_instructions_by_category
 
 
+def get_phase_ui_elements(phase_name):
+    """
+    Get UI elements (emoji and description) for a blanketing phase.
+    
+    Args:
+        phase_name: Phase name ('Morning', 'Day', 'Night')
+        
+    Returns:
+        tuple: (phase_emoji, phase_description)
+    """
+    phase_ui = {
+        "Morning": ("🌅", "Early care period"),
+        "Day": ("☀️", "Midday monitoring period"),
+        "Night": ("🌙", "Night care period")
+    }
+    return phase_ui.get(phase_name, ("❓", "Unknown phase"))
+
+
 def get_next_phase_forecast(current_phase, latitude, longitude):
     """
     Get forecast data until the next blanketing phase.
@@ -75,30 +93,7 @@ def get_next_phase_forecast(current_phase, latitude, longitude):
         return None, [], None
 
 
-def get_current_phase():
-    """
-    Determine the current blanketing phase based on time of day.
-    
-    Returns:
-        tuple: (phase_name, phase_emoji, phase_description)
-    """
-    now = datetime.now()
-    current_hour = now.hour
-    current_minute = now.minute
-    
-    # Convert current time to minutes since midnight for easier comparison
-    current_time_minutes = current_hour * 60 + current_minute
-    
-    # Phase boundaries in minutes since midnight
-    day_start = 11 * 60  # 11:00 AM
-    evening_start = 15 * 60 + 50  # 3:50 PM
-    
-    if current_time_minutes < day_start:
-        return "Morning", "🌅", "Early care period"
-    elif current_time_minutes < evening_start:
-        return "Day", "☀️", "Midday monitoring period"
-    else:
-        return "Night", "🌙", "Night care period"
+
 
 
 def render_main_tab(weather_data):
@@ -108,7 +103,8 @@ def render_main_tab(weather_data):
     Args:
         weather_data (dict): Weather data from API for blanketing logic
     """    # Display current blanketing phase
-    phase_name, phase_emoji, phase_description = get_current_phase()
+    phase_name = BlanktetingLogic.get_current_phase()
+    phase_emoji, phase_description = get_phase_ui_elements(phase_name)
     current_time = datetime.now().strftime("%I:%M %p")
     
     st.info(f"{phase_emoji} **{phase_name}** ({phase_description}) - {current_time}")

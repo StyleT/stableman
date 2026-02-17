@@ -286,6 +286,148 @@ class TestHelperMethods(unittest.TestCase):
         self.assertEqual(max_chance, 0)
 
 
+class TestCurrentPhase(unittest.TestCase):
+    """Test current phase determination logic"""
+    
+    def test_morning_phase_boundaries(self):
+        """Test morning phase boundaries (4:30 AM to 11:00 AM)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        # Test 6:00 AM (should be Morning)
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 6, 0)  # 6:00 AM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Morning")    
+    def test_morning_phase_start_at_430(self):
+        """Test morning phase starts exactly at 4:30 AM"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 4, 30)  # 4:30 AM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Morning")
+    
+    def test_night_phase_before_430(self):
+        """Test night phase at 4:29 AM (last minute before Morning)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 4, 29)  # 4:29 AM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Night")    
+    def test_morning_phase_boundary_at_1059(self):
+        """Test morning phase at 10:59 AM (last minute of Morning)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 10, 59)  # 10:59 AM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Morning")
+    
+    def test_day_phase_start_at_1100(self):
+        """Test day phase starts exactly at 11:00 AM"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 11, 0)  # 11:00 AM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Day")
+    
+    def test_day_phase_boundaries(self):
+        """Test day phase boundaries (11:00 AM to 3:50 PM)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        # Test 2:30 PM (should be Day)
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 14, 30)  # 2:30 PM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Day")
+    
+    def test_day_phase_boundary_at_1549(self):
+        """Test day phase at 3:49 PM (last minute of Day)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 15, 49)  # 3:49 PM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Day")
+    
+    def test_night_phase_start_at_1550(self):
+        """Test night phase starts exactly at 3:50 PM"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 15, 50)  # 3:50 PM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Night")
+    
+    def test_night_phase_boundaries(self):
+        """Test night phase boundaries (3:50 PM to 11:00 AM next day)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        # Test 8:00 PM (should be Night)
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 20, 0)  # 8:00 PM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Night")
+    
+    def test_night_phase_late_night(self):
+        """Test night phase in late night/early morning hours (midnight to 4:30 AM)"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        # Test 2:00 AM (should be Night)
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 2, 0)  # 2:00 AM
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Night")
+    
+    def test_midnight_is_night_phase(self):
+        """Test that midnight is in Night phase"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 0, 0)  # Midnight
+            phase_name = BlanktetingLogic.get_current_phase()
+            self.assertEqual(phase_name, "Night")
+    
+    def test_function_returns_string_phase_name(self):
+        """Test that function returns a string phase name"""
+        result = BlanktetingLogic.get_current_phase()
+        self.assertIsInstance(result, str)
+        self.assertIn(result, ["Morning", "Day", "Night"])
+    
+    def test_all_valid_phases_covered(self):
+        """Test that all valid phase names are returned by the function"""
+        from unittest.mock import patch
+        from datetime import datetime
+        
+        # Test each phase boundary
+        test_cases = [
+            (2, 0, "Night"),     # 2:00 AM - Night (early morning)
+            (6, 0, "Morning"),   # 6:00 AM - Morning
+            (12, 0, "Day"),      # 12:00 PM - Day
+            (20, 0, "Night")     # 8:00 PM - Night (evening)
+        ]
+        
+        for hour, minute, expected_phase in test_cases:
+            with patch('datetime.datetime') as mock_datetime:
+                mock_datetime.now.return_value = datetime(2024, 1, 1, hour, minute)
+                phase_name = BlanktetingLogic.get_current_phase()
+                self.assertEqual(phase_name, expected_phase, 
+                               f"Expected {expected_phase} at {hour:02d}:{minute:02d}, got {phase_name}")
+
+
 if __name__ == '__main__':
     # Run all tests
     unittest.main(verbosity=2)

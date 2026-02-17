@@ -236,6 +236,37 @@ class BlanktetingLogic:
             return cloudy_periods / total_periods > 0.5
         return False
     
+    @staticmethod
+    def get_current_phase():
+        """
+        Determine the current blanketing phase based on time of day.
+        
+        Returns:
+            str: Phase name ('Morning', 'Day', 'Night')
+        """
+        from datetime import datetime
+        
+        now = datetime.now()
+        current_hour = now.hour
+        current_minute = now.minute
+        
+        # Convert current time to minutes since midnight for easier comparison
+        current_time_minutes = current_hour * 60 + current_minute
+        
+        # Phase boundaries in minutes since midnight
+        morning_start = 4 * 60 + 30  # 4:30 AM
+        day_start = 11 * 60  # 11:00 AM
+        evening_start = 15 * 60 + 50  # 3:50 PM
+        
+        if current_time_minutes < morning_start:
+            return "Night"  # Midnight to 4:30 AM
+        elif current_time_minutes < day_start:
+            return "Morning"  # 4:30 AM to 11:00 AM
+        elif current_time_minutes < evening_start:
+            return "Day"  # 11:00 AM to 3:50 PM
+        else:
+            return "Night"  # 3:50 PM to midnight
+    
     @classmethod
     def _get_max_rain_chance(cls, forecast_periods: List[Dict]) -> int:
         """
