@@ -16,14 +16,11 @@ def get_user_timezone():
     try:
         # Get timezone from Streamlit's context
         browser_timezone = st.context.timezone
-        print(f"DEBUG: Streamlit context timezone: {browser_timezone}")
         
         if browser_timezone:
             timezone_obj = pytz.timezone(browser_timezone)
-            print(f"DEBUG: Successfully created timezone object: {timezone_obj}")
             return timezone_obj
         else:
-            print("DEBUG: No timezone in context, falling back to UTC")
             return pytz.UTC
     except Exception as e:
         print(f"DEBUG: Error getting timezone from context: {e}")
