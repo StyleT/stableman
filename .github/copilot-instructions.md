@@ -3,6 +3,17 @@
 ## Project Overview
 Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with AmbientWeather.net API to deliver real-time, condition-specific blanketing recommendations with intelligent caching and rate limiting.
 
+## ⚠️ CRITICAL: Blanketing Rules Synchronization
+**ALWAYS** keep [`blanketing_rules.md`](./blanketing_rules.md) synchronized with the implementation in `main_tab.py`. Any changes to:
+- Temperature thresholds
+- Blanketing categories  
+- Care instructions
+- Phase timing
+- Forecast logic
+- Animal-specific rules
+
+**MUST** be immediately reflected in both the code AND the documentation. This ensures stable hands have accurate guidance and developers understand the business logic.
+
 ## Architecture & Structure
 - **Four-Tab Modular Design**: Complete separation of concerns across focused UI modules
 - **Main Orchestration**: Core application logic in `streamlit_app.py`
@@ -16,7 +27,7 @@ Stableman is a Streamlit web application that provides horse blanketing instruct
   - `about_tab.py` - App information and documentation
 - **Smart Configuration**: Dynamic UI that shows only missing configuration items
 - **Weather Integration**: Dual APIs for current conditions and 24-hour forecasts
-- **Decision Logic**: Temperature-based horse blanketing guidelines (20°F/40°F/60°F thresholds)
+- **Decision Logic**: Feels-like temperature based blanketing with forecast integration
 - **Smart Caching**: 1-minute cache for current weather, 30-minute for forecasts
 - **Timezone Handling**: Browser-aware timestamp display with pytz integration
 
@@ -78,7 +89,7 @@ LOCATION_LONGITUDE=-74.0060             # Required: Stable location longitude
 
 ### Main Tab (`main_tab.py`)
 - **`render_main_tab(weather_data)`**: Primary blanketing instructions interface
-- **Temperature Logic**: 20°F/40°F/60°F threshold-based recommendations
+- **Temperature Logic**: Feels-like based with forecast-aware decision making
 - **User-Focused**: Core stable hand guidance without technical details
 - **Weather-Dependent**: Real-time instructions based on current conditions
 
@@ -154,13 +165,15 @@ else:
 - **Error Handling**: Specific UI for device selection, rate limits, and API errors
 
 ### Blanketing Logic
-Temperature-based recommendations:
-```python
-if temp < 20: "Heavy Blanket Required" (300g+ fill)
-elif temp < 40: "Medium Blanket Recommended" (150-250g)
-elif temp < 60: "Light Blanket Optional"
-else: "No Blanket Needed"
-```
+**See [`blanketing_rules.md`](./blanketing_rules.md) for complete, up-to-date blanketing guidelines.**
+
+Key features:
+- **Feels-like temperature** based decisions (not air temperature)
+- **Forecast-aware logic** considering weather until next care phase
+- **Anti-overheating priority** with smart category step-down
+- **Phase-based timing**: Morning/Day/Night care cycles
+- **Housing-aware thresholds**: Different rules for horses OUT vs IN
+- **Animal-specific rules**: Horses vs donkeys
 
 ## Development Workflow
 
