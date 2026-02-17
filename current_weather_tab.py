@@ -3,8 +3,7 @@ Current Weather Tab for Stableman application.
 Displays real-time weather conditions with metrics and timestamps.
 """
 import streamlit as st
-from datetime import datetime
-import pytz
+from timezone_utils import format_timestamp
 
 
 def handle_device_selection_error(error_msg):
@@ -116,47 +115,13 @@ def render_current_weather_tab(weather_data, error):
             if weather_data.get('last_update'):
                 try:
                     last_update = weather_data['last_update']
+                    timestamp_ms = int(last_update) if isinstance(last_update, (int, float, str)) else 0
                     
-                    # Get browser timezone
-                    browser_tz = st.context.timezone
-                    if browser_tz:
-                        local_tz = pytz.timezone(browser_tz)
-                    else:
-                        local_tz = pytz.UTC  # Fallback to UTC if no timezone detected
+                    # Use timezone utility to format timestamp
+                    formatted_time, relative_time = format_timestamp(timestamp_ms)
                     
-                    # Handle different timestamp formats
-                    if isinstance(last_update, (int, float)) or (isinstance(last_update, str) and last_update.isdigit()):
-                        # Unix timestamp in milliseconds
-                        timestamp_ms = int(last_update)
-                        utc_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=pytz.UTC)
-                    else:
-                        # ISO format string (fallback)
-                        utc_time = datetime.fromisoformat(str(last_update).replace('Z', '+00:00'))
-                        if utc_time.tzinfo is None:
-                            utc_time = utc_time.replace(tzinfo=pytz.UTC)
-                    
-                    # Convert to local timezone
-                    local_time = utc_time.astimezone(local_tz)
-                    
-                    # Convert to a more readable format in local time
-                    tz_name = browser_tz or "UTC"
-                    readable_time = local_time.strftime(f"%B %d, %Y at %I:%M %p {tz_name}")
-                    st.caption(f"📅 Last updated: {readable_time}")
-                    
-                    # Display time ago (using UTC for calculation)
-                    now_utc = datetime.now(pytz.UTC)
-                    time_diff = now_utc - utc_time
-                    
-                    if time_diff.total_seconds() < 60:
-                        time_ago = f"{int(time_diff.total_seconds())} seconds ago"
-                    elif time_diff.total_seconds() < 3600:
-                        time_ago = f"{int(time_diff.total_seconds() / 60)} minutes ago"
-                    elif time_diff.total_seconds() < 86400:
-                        time_ago = f"{int(time_diff.total_seconds() / 3600)} hours ago"
-                    else:
-                        time_ago = f"{int(time_diff.total_seconds() / 86400)} days ago"
-                    
-                    st.caption(f"⏰ {time_ago}")
+                    st.caption(f"📅 Last updated: {formatted_time}")
+                    st.caption(f"⏰ {relative_time}")
                     
                 except (ValueError, AttributeError, TypeError) as e:
                     # Fallback to raw timestamp if parsing fails

@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 from datetime import datetime
-import pytz
 from dotenv import load_dotenv
 from ambient_weather import create_api_client
 from weather_gov import create_weather_gov_client

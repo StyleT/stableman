@@ -4,17 +4,13 @@ Displays weather forecast with location information and strategic planning.
 """
 import streamlit as st
 from datetime import datetime
-import pytz
+from timezone_utils import get_user_timezone
 
 
 def display_forecast_period(periods, start_idx, end_idx):
     """Helper function to display forecast periods"""
     # Get browser timezone for consistent time display
-    browser_tz = st.context.timezone
-    if browser_tz:
-        local_tz = pytz.timezone(browser_tz)
-    else:
-        local_tz = pytz.UTC  # Fallback to UTC if no timezone detected
+    local_tz = get_user_timezone()
         
     for i, period in enumerate(periods[start_idx:end_idx], start_idx):
         try:

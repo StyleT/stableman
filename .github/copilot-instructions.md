@@ -299,7 +299,7 @@ Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
 - **Rate Limits**: 
   - AmbientWeather: 1 request/second per API key, 3 requests/second per developer key
   - Weather.gov: No explicit rate limits but respectful usage recommended
-- **Timezone Handling**: Browser timezone detection via `st.context.timezone`
+- **Timezone Handling**: Always use Browser timezone detection via `timezone_utils.py`
 - **Deployment**: Optimized for Streamlit Cloud with environment variable support
 
 ## File Structure

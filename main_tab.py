@@ -5,7 +5,6 @@ Contains blanketing instructions UI that uses separated business logic.
 import streamlit as st
 from datetime import datetime, timedelta
 from dateutil import parser
-import pytz
 from weather_gov import create_weather_gov_client
 from configuration import get_location_coordinates
 from blanketing_logic import BlanktetingLogic, get_care_instructions_by_category
