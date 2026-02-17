@@ -8,6 +8,7 @@ from dateutil import parser
 from weather_gov import create_weather_gov_client
 from configuration import get_location_coordinates
 from blanketing_logic import BlanktetingLogic, get_care_instructions_by_category
+from timezone_utils import get_user_timezone
 
 
 def get_phase_ui_elements(phase_name):
@@ -28,7 +29,7 @@ def get_phase_ui_elements(phase_name):
     return phase_ui.get(phase_name, ("❓", "Unknown phase"))
 
 
-def get_next_phase_forecast(current_phase, latitude, longitude):
+def get_next_phase_forecast(current_phase, latitude, longitude, user_timezone=None):
     """
     Get forecast data until the next blanketing phase.
     
@@ -36,6 +37,7 @@ def get_next_phase_forecast(current_phase, latitude, longitude):
         current_phase: Current phase name ('Morning', 'Day', 'Evening')
         latitude: Location latitude
         longitude: Location longitude
+        user_timezone: User's timezone object for accurate time calculations
     
     Returns:
         tuple: (min_feels_like, forecast_periods, next_phase_time)
@@ -48,7 +50,14 @@ def get_next_phase_forecast(current_phase, latitude, longitude):
             return None, [], None
         
         forecast_periods = forecast_data.get('forecast', [])
-        now = datetime.now()
+        
+        # Use user timezone for time calculations
+        if user_timezone:
+            import pytz
+            utc_now = datetime.now(pytz.UTC)
+            now = utc_now.astimezone(user_timezone)
+        else:
+            now = datetime.now()
         
         # Determine next phase timing
         if current_phase == 'Morning':
@@ -69,6 +78,9 @@ def get_next_phase_forecast(current_phase, latitude, longitude):
         relevant_periods = []
         min_feels_like = float('inf')
         
+        # Make next_phase_time naive for comparison with forecast periods
+        comparison_time = next_phase_time.replace(tzinfo=None) if next_phase_time.tzinfo else next_phase_time
+        
         for period in forecast_periods:
             if not period.get('time'):
                 continue
@@ -79,7 +91,7 @@ def get_next_phase_forecast(current_phase, latitude, longitude):
                 if period_time.tzinfo:
                     period_time = period_time.replace(tzinfo=None)
                 
-                if period_time <= next_phase_time:
+                if period_time <= comparison_time:
                     relevant_periods.append(period)
                     if period.get('feels_like') is not None:
                         min_feels_like = min(min_feels_like, period['feels_like'])
@@ -103,9 +115,15 @@ def render_main_tab(weather_data):
     Args:
         weather_data (dict): Weather data from API for blanketing logic
     """    # Display current blanketing phase
-    phase_name = BlanktetingLogic.get_current_phase()
+    user_timezone = get_user_timezone()
+    phase_name = BlanktetingLogic.get_current_phase(user_timezone)
     phase_emoji, phase_description = get_phase_ui_elements(phase_name)
-    current_time = datetime.now().strftime("%I:%M %p")
+    
+    # Display current time in user's timezone
+    import pytz
+    utc_now = datetime.now(pytz.UTC)
+    local_now = utc_now.astimezone(user_timezone)
+    current_time = local_now.strftime("%I:%M %p")
     
     st.info(f"{phase_emoji} **{phase_name}** ({phase_description}) - {current_time}")
     
@@ -119,7 +137,7 @@ def render_main_tab(weather_data):
         try:
             latitude, longitude = get_location_coordinates()
             min_forecast_feels_like, forecast_periods, next_phase_time = get_next_phase_forecast(
-                phase_name, latitude, longitude
+                phase_name, latitude, longitude, user_timezone
             )
         except:
             min_forecast_feels_like = None
@@ -177,7 +195,7 @@ def render_main_tab(weather_data):
             
             # Option 1: Conservative (blanket for whole day until night)
             try:
-                evening_forecast_low, _, _ = get_next_phase_forecast("Day", latitude, longitude)
+                evening_forecast_low, _, _ = get_next_phase_forecast("Day", latitude, longitude, user_timezone)
                 if evening_forecast_low is not None:
                     conservative_decision = BlanktetingLogic.make_blanketing_decision(
                         current_feels_like, evening_forecast_low, housing_status
@@ -222,7 +240,12 @@ def render_main_tab(weather_data):
                         if not time_str and period.get('time'):
                             try:
                                 period_time = parser.parse(period['time'])
-                                time_str = period_time.strftime("%b %d, %I:%M %p")  # e.g., "Feb 16, 02:30 PM"
+                                # Convert to user timezone if it's UTC
+                                if period_time.tzinfo:
+                                    local_period_time = period_time.astimezone(user_timezone)
+                                    time_str = local_period_time.strftime("%b %d, %I:%M %p")  # e.g., "Feb 16, 02:30 PM"
+                                else:
+                                    time_str = period_time.strftime("%b %d, %I:%M %p")
                             except:
                                 time_str = f"Period {i+1}"
                         elif not time_str:  # If both name and time parsing failed

@@ -237,16 +237,27 @@ class BlanktetingLogic:
         return False
     
     @staticmethod
-    def get_current_phase():
+    def get_current_phase(user_timezone=None):
         """
-        Determine the current blanketing phase based on time of day.
+        Determine the current blanketing phase based on time of day in user's timezone.
         
+        Args:
+            user_timezone: pytz timezone object for user's timezone. If None, uses server timezone.
+            
         Returns:
             str: Phase name ('Morning', 'Day', 'Night')
         """
         from datetime import datetime
+        import pytz
         
-        now = datetime.now()
+        if user_timezone:
+            # Get current time in user's timezone
+            utc_now = datetime.now(pytz.UTC)
+            now = utc_now.astimezone(user_timezone)
+        else:
+            # Fallback to server timezone
+            now = datetime.now()
+            
         current_hour = now.hour
         current_minute = now.minute
         
