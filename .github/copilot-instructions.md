@@ -4,24 +4,27 @@
 Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with AmbientWeather.net API to deliver real-time, condition-specific blanketing recommendations with intelligent caching and rate limiting.
 
 ## ⚠️ CRITICAL: Blanketing Rules Synchronization
-**ALWAYS** keep [`blanketing_rules.md`](./blanketing_rules.md) synchronized with the implementation in `main_tab.py`. Any changes to:
+**ALWAYS** keep [`blanketing_rules.md`](./blanketing_rules.md) synchronized with the implementation in `blanketing_logic.py`. Any changes to:
 - Temperature thresholds
 - Blanketing categories  
 - Care instructions
 - Phase timing
 - Forecast logic
 - Animal-specific rules
+- Housing determination rules
 
 **MUST** be immediately reflected in both the code AND the documentation. This ensures stable hands have accurate guidance and developers understand the business logic.
 
 ## Architecture & Structure
 - **Four-Tab Modular Design**: Complete separation of concerns across focused UI modules
 - **Main Orchestration**: Core application logic in `streamlit_app.py`
+- **Business Logic Separation**: Pure logic in `blanketing_logic.py` separate from UI
+- **Comprehensive Testing**: Unit tests in `test_blanketing_logic.py` with 20+ test cases
 - **Configuration Management**: Environment variable validation and UI in `configuration.py`
 - **Weather API Module**: AmbientWeather.net client in `ambient_weather.py`
 - **Forecast API Module**: Weather.gov client in `weather_gov.py`
 - **Tab Modules**: Dedicated files for each UI tab
-  - `main_tab.py` - Blanketing instructions interface
+  - `main_tab.py` - Blanketing instructions interface (uses `blanketing_logic.py`)
   - `current_weather_tab.py` - Real-time conditions display
   - `forecast_tab.py` - 24-hour planning and strategy
   - `about_tab.py` - App information and documentation
@@ -37,7 +40,42 @@ streamlit>=1.30.0           # Core web framework
 requests>=2.28.0            # HTTP client for weather API
 python-dotenv>=0.19.0       # Environment variable management
 pytz>=2021.1                # Timezone handling for timestamps
+python-dateutil>=2.8.0      # Date parsing for forecast data
 ```
+
+## Core Business Logic (`blanketing_logic.py`)
+
+### Key Classes & Architecture:
+- **`BlanktetingLogic`**: Main business logic class with static methods
+- **`BlanktetingDecision`**: Data class for blanketing recommendation results
+- **`HousingDecision`**: Data class for housing status determination results
+- **`get_care_instructions_by_category()`**: Care instruction generation helper
+
+### Critical Business Rules:
+```python
+# Temperature thresholds
+THRESHOLDS_OUT = {'light': 50, 'medium': 40, 'heavy': 30}  # Horses OUT
+THRESHOLDS_IN = {'light': 45, 'medium': 35, 'heavy': 25}   # Horses IN
+
+# Heat index protection (only when temp > 75°F)
+HEAT_INDEX_CLOUDY_THRESHOLD = 150
+HEAT_INDEX_SUNNY_THRESHOLD = 120
+
+# Rain protection
+RAIN_CHANCE_THRESHOLD = 10  # Percentage
+
+# Anti-overheating
+TEMP_DROP_ALERT_THRESHOLD = 10  # °F
+```
+
+### Unit Testing (`test_blanketing_logic.py`):
+- **20+ comprehensive test cases** covering all business logic
+- **Housing status determination** tests (heat index, rain, edge cases)
+- **Temperature threshold** boundary testing for OUT/IN scenarios
+- **Anti-overheating logic** validation and step-down rules
+- **Care instruction generation** testing
+- **Edge cases and error conditions** coverage
+- Run tests: `python3 test_blanketing_logic.py` or `./run_tests.sh`
 
 ## Environment Configuration
 All required environment variables in `.env` file:
@@ -89,7 +127,10 @@ LOCATION_LONGITUDE=-74.0060             # Required: Stable location longitude
 
 ### Main Tab (`main_tab.py`)
 - **`render_main_tab(weather_data)`**: Primary blanketing instructions interface
-- **Temperature Logic**: Feels-like based with forecast-aware decision making
+- **Business Logic Integration**: Uses `BlanktetingLogic` class for all decisions
+- **Housing Determination**: Automatic status based on weather conditions
+- **Forecast Integration**: Phase-aware recommendations with timeline display
+- **UI Components**: Metrics, alerts, recommendations using separated logic
 - **User-Focused**: Core stable hand guidance without technical details
 - **Weather-Dependent**: Real-time instructions based on current conditions
 
@@ -186,6 +227,12 @@ cp .env.example .env  # Add your API keys
 streamlit run streamlit_app.py
 ```
 
+### Testing Business Logic
+```bash
+python3 test_blanketing_logic.py  # Unit tests for business logic
+./run_tests.sh                    # Comprehensive test runner with coverage report
+```
+
 ### Testing Weather API
 ```bash
 python test_weather_api.py  # Standalone API test script
@@ -197,8 +244,21 @@ python test_weather_api.py  # Standalone API test script
 - **API Efficiency**: Prefer cached data over fresh API calls
 - **Configuration Guidance**: Auto-generated `.env` suggestions for device setup
 - **Timestamp Handling**: Unix milliseconds → human-readable + relative time
+- **Business Logic Separation**: Pure logic in dedicated modules with comprehensive testing
 
 ## Common Tasks
+
+### Modifying Blanketing Logic
+1. **Update business logic**: Modify `blanketing_logic.py` functions
+2. **Run tests**: Execute `./run_tests.sh` to ensure no regressions
+3. **Update documentation**: Sync changes with `blanketing_rules.md`
+4. **Test integration**: Verify UI integration in `main_tab.py`
+
+### Adding New Unit Tests
+1. Add test methods to `test_blanketing_logic.py`
+2. Follow naming convention: `test_[functionality]_[scenario]`
+3. Cover edge cases and boundary conditions
+4. Run tests to verify they pass
 
 ### Adding New Tab Modules
 1. Create new tab file (e.g., `new_tab.py`) with `render_new_tab()` function
@@ -219,7 +279,7 @@ python test_weather_api.py  # Standalone API test script
 ### Adding Weather Data Fields
 1. Update `ambient_weather.py` data structure in `get_latest_weather_data()`
 2. Add UI display in `current_weather_tab.py` metrics section
-3. Consider blanketing logic impact in `main_tab.py`
+3. Consider blanketing logic impact in `blanketing_logic.py`
 
 ### Adding Forecast Data Fields
 1. Update `weather_gov.py` data parsing in `get_24_hour_forecast()`
@@ -229,9 +289,6 @@ python test_weather_api.py  # Standalone API test script
 ### Modifying Cache Duration
 - Current weather: Change `ttl=60` in `@st.cache_data(ttl=60)` decorator
 - Forecast data: Change `ttl=1800` in forecast cache decorator
-
-### Adding Blanketing Rules
-Update temperature threshold logic in `main_tab.py` render function
 
 ### API Rate Limit Tuning
 Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
@@ -251,12 +308,16 @@ Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
 ├── configuration.py          # Environment variable validation and configuration UI
 ├── ambient_weather.py        # AmbientWeather.net API client for current conditions
 ├── weather_gov.py            # Weather.gov API client for 24-hour forecasts
+├── blanketing_logic.py       # Pure business logic for blanketing decisions
 ├── main_tab.py               # Blanketing instructions interface
 ├── current_weather_tab.py    # Real-time conditions display
 ├── forecast_tab.py           # 24-hour planning and strategic recommendations
 ├── about_tab.py              # App information and documentation
+├── test_blanketing_logic.py  # Unit tests for business logic (20+ test cases)
 ├── test_weather_api.py       # Standalone API testing script
+├── run_tests.sh              # Convenient test runner script
 ├── requirements.txt          # Python dependencies
 ├── .env                      # API keys and configuration (gitignored)
 └── .github/copilot-instructions.md  # This file
+└── .github/blanketing_rules.md      # Business rules documentation
 ```
