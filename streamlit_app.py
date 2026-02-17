@@ -1,105 +1,95 @@
 import streamlit as st
-import requests
 import os
-import time
+from datetime import datetime
+import pytz
 from dotenv import load_dotenv
+from ambient_weather import create_api_client
 
 # Load environment variables from .env file
 load_dotenv()
 
 st.set_page_config(page_title="Stableman", page_icon="🐴")
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes to reduce API calls
+@st.cache_data(ttl=60)  # Cache for 1 minute to reduce API calls
 def get_weather_data():
-    """Fetch current weather data from AmbientWeather.net API with rate limiting"""
-    api_key = os.getenv('AMBIENT_API_KEY')
-    app_key = os.getenv('AMBIENT_APP_KEY')
+    """Fetch current weather data from AmbientWeather.net API"""
+    api_client, error = create_api_client()
     
-    if not api_key or not app_key:
-        return None, "Weather API keys not configured"
+    if error:
+        return None, error
     
-    try:
-        # Rate limiting: Wait to respect 1 request per second limit
-        time.sleep(1.1)  # Slightly over 1 second to be safe
+    weather_data, error = api_client.get_latest_weather_data()
+    
+    if error:
+        return None, error
+    
+    return weather_data, None
+
+def handle_device_selection_error(error_msg):
+    """Handle device selection errors and display appropriate UI"""
+    if error_msg.startswith("DEVICE_SELECTION_SINGLE|"):
+        parts = error_msg.split("|")
+        mac_address = parts[1]
+        device_name = parts[2]
         
-        # Get user devices first
-        devices_url = "https://rt.ambientweather.net/v1/devices"
-        devices_params = {
-            'apiKey': api_key,
-            'applicationKey': app_key
-        }
+        st.warning("🔧 **Device Configuration Needed**")
+        st.write(f"Found one weather station: **{device_name}**")
+        st.write(f"MAC Address: `{mac_address}`")
         
-        devices_response = requests.get(devices_url, params=devices_params, timeout=10)
+        st.info("💡 **To improve performance, add this to your .env file:**")
+        st.code(f"AMBIENT_MAC_ADDRESS={mac_address}")
+        st.write("This will avoid listing devices on each request and speed up the app.")
         
-        if devices_response.status_code == 429:
-            return None, "⏱️ API rate limit exceeded. Please wait a moment and refresh."
+        return None
         
-        devices_response.raise_for_status()
-        devices = devices_response.json()
+    elif error_msg.startswith("DEVICE_SELECTION_MULTIPLE|"):
+        device_list_str = error_msg.split("|", 1)[1]
+        devices = []
         
-        if not devices:
-            return None, "No weather stations found"
+        for device_str in device_list_str.split(";"):
+            if "|" in device_str:
+                name, mac = device_str.split("|", 1)
+                devices.append({"name": name, "mac": mac})
         
-        # Rate limiting: Wait before second API call
-        time.sleep(1.1)
+        st.warning("🔧 **Multiple Weather Stations Found**")
+        st.write("Please select which weather station to use:")
         
-        # Get data from first device
-        device_mac = devices[0]['macAddress']
-        data_url = f"https://rt.ambientweather.net/v1/devices/{device_mac}"
-        data_params = {
-            'apiKey': api_key,
-            'applicationKey': app_key,
-            'limit': 1
-        }
+        for i, device in enumerate(devices, 1):
+            st.write(f"**{i}. {device['name']}**")
+            st.write(f"   MAC Address: `{device['mac']}`")
         
-        data_response = requests.get(data_url, params=data_params, timeout=10)
+        st.info("💡 **To configure your preferred station, add this to your .env file:**")
+        st.code("AMBIENT_MAC_ADDRESS=<mac_address_from_above>")
+        st.write("Replace `<mac_address_from_above>` with the MAC address of your preferred station.")
         
-        if data_response.status_code == 429:
-            return None, "⏱️ API rate limit exceeded. Data is cached for 10 minutes to prevent this."
+        return None
         
-        data_response.raise_for_status()
-        weather_data = data_response.json()
-        
-        if weather_data:
-            latest_reading = weather_data[0]
-            return {
-                'temperature': latest_reading.get('tempf'),
-                'humidity': latest_reading.get('humidity'),
-                'station_name': devices[0].get('info', {}).get('name', 'Weather Station'),
-                'last_update': latest_reading.get('dateutc')
-            }, None
-        else:
-            return None, "No weather data available"
-            
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 429:
-            return None, "⏱️ API rate limit exceeded. Weather data is cached to minimize requests."
-        else:
-            return None, f"API HTTP error: {e.response.status_code}"
-    except requests.exceptions.RequestException as e:
-        return None, f"API request failed: {str(e)}"
-    except Exception as e:
-        return None, f"Error fetching weather data: {str(e)}"
+    return error_msg
 
 st.title("🐴 Stableman")
 st.write("Horse blanketing instructions based on current weather conditions")
 
 # Weather Information Section
 st.header("🌤️ Current Weather Conditions")
-st.caption("⏱️ Data refreshed every 10 minutes to respect API rate limits (1 req/sec)")
+st.caption("⏱️ Data refreshed every 1 minute to respect API rate limits (1 req/sec)")
 
 weather_data, error = get_weather_data()
 
 if error:
-    if "rate limit" in error.lower():
-        st.warning(f"⚠️ {error}")
-        st.info("💡 Try refreshing in a few seconds. Weather data is automatically cached to prevent rate limiting.")
+    # Check if this is a device selection error
+    if error.startswith("DEVICE_SELECTION_"):
+        handle_device_selection_error(error)
     else:
-        st.error(f"⚠️ {error}")
-        st.info("💡 Set AMBIENT_API_KEY and AMBIENT_APP_KEY environment variables to enable weather data")
+        # Regular error handling
+        if "rate limit" in error.lower():
+            st.warning(f"⚠️ {error}")
+            st.info("💡 Try refreshing in a few seconds. Weather data is automatically cached to prevent rate limiting.")
+        else:
+            st.error(f"⚠️ {error}")
+            st.info("💡 Set AMBIENT_API_KEY and AMBIENT_APP_KEY environment variables to enable weather data")
 else:
     if weather_data:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             temp = weather_data['temperature']
@@ -112,6 +102,16 @@ else:
                 st.metric("🌡️ Temperature", "--°F")
         
         with col2:
+            feels_like = weather_data.get('feels_like')
+            if feels_like is not None:
+                st.metric(
+                    label="🌡️ Feels Like",
+                    value=f"{feels_like}°F"
+                )
+            else:
+                st.metric("🌡️ Feels Like", "--°F")
+        
+        with col3:
             humidity = weather_data['humidity']
             if humidity is not None:
                 st.metric(
@@ -121,7 +121,7 @@ else:
             else:
                 st.metric("💧 Humidity", "--%")
         
-        with col3:
+        with col4:
             st.metric(
                 label="📍 Station",
                 value=weather_data['station_name']
@@ -129,7 +129,42 @@ else:
         
         # Show last update time if available
         if weather_data.get('last_update'):
-            st.caption(f"📅 Last updated: {weather_data['last_update']} UTC")
+            try:
+                last_update = weather_data['last_update']
+                
+                # Handle different timestamp formats
+                if isinstance(last_update, (int, float)) or (isinstance(last_update, str) and last_update.isdigit()):
+                    # Unix timestamp in milliseconds
+                    timestamp_ms = int(last_update)
+                    utc_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=pytz.UTC)
+                else:
+                    # ISO format string (fallback)
+                    utc_time = datetime.fromisoformat(str(last_update).replace('Z', '+00:00'))
+                    if utc_time.tzinfo is None:
+                        utc_time = utc_time.replace(tzinfo=pytz.UTC)
+                
+                # Convert to a more readable format
+                readable_time = utc_time.strftime("%B %d, %Y at %I:%M %p UTC")
+                st.caption(f"📅 Last updated: {readable_time}")
+                
+                # Display time ago
+                now_utc = datetime.now(pytz.UTC)
+                time_diff = now_utc - utc_time
+                
+                if time_diff.total_seconds() < 60:
+                    time_ago = f"{int(time_diff.total_seconds())} seconds ago"
+                elif time_diff.total_seconds() < 3600:
+                    time_ago = f"{int(time_diff.total_seconds() / 60)} minutes ago"
+                elif time_diff.total_seconds() < 86400:
+                    time_ago = f"{int(time_diff.total_seconds() / 3600)} hours ago"
+                else:
+                    time_ago = f"{int(time_diff.total_seconds() / 86400)} days ago"
+                
+                st.caption(f"⏰ {time_ago}")
+                
+            except (ValueError, AttributeError, TypeError) as e:
+                # Fallback to raw timestamp if parsing fails
+                st.caption(f"📅 Last updated: {weather_data['last_update']} UTC")
     else:
         st.warning("No weather data available")
 
@@ -181,6 +216,8 @@ st.write("Set these environment variables to enable weather data:")
 st.code("""
 AMBIENT_API_KEY=your_api_key_here
 AMBIENT_APP_KEY=your_application_key_here
+AMBIENT_MAC_ADDRESS=your_weather_station_mac_address (optional)
 """)
 
 st.info("💡 Get your API keys from [AmbientWeather.net Developer Portal](https://ambientweather.docs.apiary.io/)")
+st.write("**Note:** AMBIENT_MAC_ADDRESS is optional but recommended for better performance. The app will help you find it if not provided.")
