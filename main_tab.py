@@ -3,11 +3,15 @@ Main Tab for Stableman application.
 Contains blanketing instructions UI that uses separated business logic.
 """
 import streamlit as st
+import pandas as pd
+import altair as alt
 from datetime import datetime, timedelta
 from dateutil import parser
 from configuration import get_location_coordinates
 from blanketing_logic import BlanktetingLogic, get_care_instructions_by_category
 from timezone_utils import get_user_timezone
+from weather_gov import create_weather_gov_client
+from forecast_graph import render_forecast_graph
 
 # Configuration for phase-specific recommendation options
 PHASE_RECOMMENDATION_CONFIG = {
@@ -135,6 +139,8 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
             
         except Exception as e:
             st.error(f"Error calculating {option['name']}: {e}")
+            # Log the full error for debugging
+            st.write(f"🔍 Error details: {str(e)}")
             continue
     
     if not decisions:
@@ -260,7 +266,7 @@ def render_main_tab(weather_data):
         
         st.header("🌡️ Blanketing Recommendations")
         
-        # Get forecast data for next phase
+        # Get forecast data for next phase (for blanketing decisions)
         try:
             latitude, longitude = get_location_coordinates()
             min_forecast_feels_like, forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
@@ -268,8 +274,26 @@ def render_main_tab(weather_data):
             )
         except Exception as e:
             st.error(f"Error loading forecast: {str(e)}")
+            st.write(f"🔍 Forecast error details: {type(e).__name__}: {str(e)}")
             forecast_periods = []
             next_phase_time = None
+        
+        # Get broader forecast data for graph display
+        try:
+            weather_client = create_weather_gov_client()
+            forecast_data_result = weather_client.get_24_hour_forecast(latitude, longitude)
+            if forecast_data_result[0] and 'forecast' in forecast_data_result[0]:
+                graph_forecast_periods = forecast_data_result[0]['forecast']
+            else:
+                graph_forecast_periods = forecast_periods  # Fallback to phase forecast
+        except Exception as e:
+            st.warning(f"24-hour forecast unavailable: {type(e).__name__}: {str(e)}")
+            graph_forecast_periods = forecast_periods  # Fallback to phase forecast
+        
+        # Determine housing status using business logic (needed for forecast graph)
+        housing_decision = BlanktetingLogic.determine_housing_status(
+            weather_data, forecast_periods
+        )
         
         # Display current temperature and forecast summary
         col1, col2, col3 = st.columns([1, 1, 1])
@@ -277,19 +301,13 @@ def render_main_tab(weather_data):
             st.metric("Current Feels Like", f"{current_feels_like}°F")
         
         with col2:
-            if forecast_periods:
-                # Show forecast period count and time range
-                st.metric("Forecast Periods", f"{len(forecast_periods)} hours", 
-                         help="Hours of forecast data analyzed for blanketing decision")
+            if graph_forecast_periods:
+                render_forecast_graph(graph_forecast_periods, housing_decision.status)
             else:
                 st.metric("Forecast Data", "Loading...")
         
         with col3:
-            # Determine housing status using business logic
-            housing_decision = BlanktetingLogic.determine_housing_status(
-                weather_data, forecast_periods
-            )
-            
+            # Display housing status (already determined above)
             if housing_decision.user_selectable:
                 # Show selector when conditions allow user choice
                 housing_status = st.selectbox(

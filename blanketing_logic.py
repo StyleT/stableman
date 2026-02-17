@@ -466,6 +466,9 @@ class BlanktetingLogic:
         """
         max_rain_chance = 0
         for period in forecast_periods:
+            # Defensive programming: ensure period is a dictionary
+            if not isinstance(period, dict):
+                continue
             rain_chance = period.get('precipitation_chance', 0)
             if rain_chance and rain_chance > max_rain_chance:
                 max_rain_chance = rain_chance
