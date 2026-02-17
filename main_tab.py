@@ -57,25 +57,6 @@ PHASE_RECOMMENDATION_CONFIG = {
     }
 }
 
-
-def get_phase_ui_elements(phase_name):
-    """
-    Get UI elements (emoji and description) for a blanketing phase.
-    
-    Args:
-        phase_name: Phase name ('Morning', 'Day', 'Night')
-        
-    Returns:
-        tuple: (phase_emoji, phase_description)
-    """
-    phase_ui = {
-        "Morning": ("🌅", "Early care period"),
-        "Day": ("☀️", "Midday monitoring period"),
-        "Night": ("🌙", "Night care period")
-    }
-    return phase_ui.get(phase_name, ("❓", "Unknown phase"))
-
-
 def get_period_time_string(period, index, user_timezone):
     """Helper function to get a formatted time string for a forecast period"""
     time_str = period.get('name', '').strip()
@@ -250,21 +231,10 @@ def render_main_tab(weather_data):
     """    # Display current blanketing phase
     user_timezone = get_user_timezone()
     phase_name = BlanktetingLogic.get_current_phase(user_timezone)
-    phase_emoji, phase_description = get_phase_ui_elements(phase_name)
-    
-    # Display current time in user's timezone
-    import pytz
-    utc_now = datetime.now(pytz.UTC)
-    local_now = utc_now.astimezone(user_timezone)
-    current_time = local_now.strftime("%I:%M %p")
-    
-    st.info(f"{phase_emoji} **{phase_name}** ({phase_description}) - {current_time}")
     
     # Advanced blanketing logic with forecast integration
     if weather_data and weather_data['feels_like'] is not None:
         current_feels_like = weather_data['feels_like']
-        
-        st.header("🌡️ Blanketing Recommendations")
         
         # Get forecast data for next phase (for blanketing decisions)
         try:
