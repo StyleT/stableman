@@ -1,7 +1,7 @@
 # Stableman - Copilot Instructions 🐴
 
 ## Project Overview
-Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with AmbientWeather.net API to deliver real-time, condition-specific blanketing recommendations with intelligent caching and rate limiting.
+Stableman is a Streamlit web application that provides horse blanketing instructions to stable hands based on weather conditions and established care guidelines. The app integrates with AmbientWeather.net API for real-time station data and falls back to Weather.gov for reliable current conditions, delivering condition-specific blanketing recommendations with intelligent caching and rate limiting.
 
 ## ⚠️ CRITICAL: Blanketing Rules Synchronization
 **ALWAYS** keep [`blanketing_rules.md`](./blanketing_rules.md) synchronized with the implementation in `blanketing_logic.py`. Any changes to:
@@ -19,17 +19,17 @@ Stableman is a Streamlit web application that provides horse blanketing instruct
 - **Four-Tab Modular Design**: Complete separation of concerns across focused UI modules
 - **Main Orchestration**: Core application logic in `streamlit_app.py`
 - **Business Logic Separation**: Pure logic in `blanketing_logic.py` separate from UI
-- **Comprehensive Testing**: Unit tests in `test_blanketing_logic.py` with 20+ test cases
+- **Comprehensive Testing**: Unit tests in `test_blanketing_logic.py` with 35 test cases
 - **Configuration Management**: Environment variable validation and UI in `configuration.py`
-- **Weather API Module**: AmbientWeather.net client in `ambient_weather.py`
-- **Forecast API Module**: Weather.gov client in `weather_gov.py`
+- **Weather Service Module**: Unified weather service with automatic fallback in `weather_service.py`
+- **Weather API Modules**: AmbientWeather.net client in `ambient_weather.py`, Weather.gov client in `weather_gov.py`
 - **Tab Modules**: Dedicated files for each UI tab
   - `main_tab.py` - Blanketing instructions interface (uses `blanketing_logic.py`)
-  - `current_weather_tab.py` - Real-time conditions display
+  - `current_weather_tab.py` - Real-time conditions display with source indicators
   - `forecast_tab.py` - 24-hour planning and strategy
   - `about_tab.py` - App information and documentation
 - **Smart Configuration**: Dynamic UI that shows only missing configuration items
-- **Weather Integration**: Dual APIs for current conditions and 24-hour forecasts
+- **Weather Integration**: Robust fallback system (AmbientWeather.net → Weather.gov) for current conditions
 - **Decision Logic**: Feels-like temperature based blanketing with forecast integration
 - **Smart Caching**: 1-minute cache for current weather, 30-minute for forecasts
 - **Timezone Handling**: Browser-aware timestamp display with pytz integration
@@ -109,6 +109,36 @@ LOCATION_LONGITUDE=-74.0060             # Required: Stable location longitude
 - **Location Context**: Rich location display with city, state, and NWS office
 - **Error Handling**: Graceful degradation for API failures with coordinate fallbacks
 
+## Unified Weather Service (`weather_service.py`)
+
+### Core Functionality:
+- **`get_current_weather_data()`**: Main function with automatic fallback mechanism
+- **`get_weather_data_with_source_info()`**: Enhanced version with source descriptions
+- **Fallback Logic**: AmbientWeather.net (primary) → Weather.gov (fallback)
+- **Unified Data Format**: Consistent weather data structure regardless of source
+- **Comprehensive Logging**: Detailed logging for troubleshooting weather service issues
+
+### Fallback Behavior:
+- **Primary Source**: AmbientWeather.net - Real-time personal weather station data
+- **Fallback Source**: Weather.gov - Uses first forecast period as current conditions
+- **Automatic Switching**: Seamless fallback when primary source fails
+- **Source Indication**: Data includes 'source' field ('ambient' or 'weather_gov')
+- **Error Aggregation**: Combined error messages when both sources fail
+
+### Data Format:
+```python
+{
+    'temperature': 72.5,           # Temperature in Fahrenheit
+    'feels_like': 68.2,            # Feels-like temperature  
+    'humidity': 65,                # Humidity percentage
+    'station_name': 'Weather Station (MAC)', # Source description
+    'last_update': '2026-02-17T...',  # ISO string (weather.gov) or ms (ambient)
+    'source': 'weather_gov',       # Data source indicator
+    'raw_data': {...},             # Original API response
+    'location_info': {...}         # Location metadata (weather.gov only)
+}
+```
+
 ## Weather API Integration (`ambient_weather.py`)
 
 ### Key Classes & Methods:
@@ -136,8 +166,10 @@ LOCATION_LONGITUDE=-74.0060             # Required: Stable location longitude
 
 ### Current Weather Tab (`current_weather_tab.py`)
 - **`render_current_weather_tab(weather_data, error)`**: Live conditions display
-- **`handle_device_selection_error()`**: Device configuration UI
+- **`handle_device_selection_error()`**: Device configuration UI  
+- **Source Indicators**: Shows data source (🏡 Personal Station vs 🏛️ NWS)
 - **Metrics Display**: 4-column weather data with timestamps
+- **Flexible Timestamp Handling**: Supports both millisecond (ambient) and ISO string (weather.gov) formats
 - **Error Handling**: Rate limits, API failures, device selection
 - **Timezone Display**: Browser-aware timestamp formatting
 
@@ -165,6 +197,7 @@ st.set_page_config(page_title="Stableman", page_icon="🐴")
 ### Configuration Integration
 ```python
 from configuration import check_configuration, display_configuration_ui, get_location_coordinates
+from weather_service import get_current_weather_data
 from main_tab import render_main_tab
 from current_weather_tab import render_current_weather_tab
 from forecast_tab import render_forecast_tab
@@ -188,9 +221,12 @@ else:
         render_about_tab()
 ```
 
-### Caching Strategy
+### Weather Data Fetching
 ```python
 @st.cache_data(ttl=60)  # 1-minute cache for weather data
+def get_weather_data():
+    """Fetch current weather data with automatic fallback"""
+    return get_current_weather_data()  # Handles ambient → weather.gov fallback
 ```
 
 ### UI Layout
@@ -294,11 +330,12 @@ python test_weather_api.py  # Standalone API test script
 Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
 
 ## External Integration
-- **AmbientWeather.net API**: Real-time weather station data with device management
-- **Weather.gov API**: 24-hour forecasts with location resolution and grid point mapping
+- **AmbientWeather.net API**: Real-time weather station data with device management (primary source)
+- **Weather.gov API**: 24-hour forecasts with location resolution and current conditions fallback
 - **Rate Limits**: 
   - AmbientWeather: 1 request/second per API key, 3 requests/second per developer key
   - Weather.gov: No explicit rate limits but respectful usage recommended
+- **Fallback Strategy**: Automatic switching from personal station to NWS data when needed
 - **Timezone Handling**: Always use Browser timezone detection via `timezone_utils.py`
 - **Deployment**: Optimized for Streamlit Cloud with environment variable support
 
@@ -306,14 +343,16 @@ Modify `rate_limit_delay` and `retry_delay` in `AmbientWeatherAPI` class
 ```
 ├── streamlit_app.py          # Main application orchestration with tab management
 ├── configuration.py          # Environment variable validation and configuration UI
+├── weather_service.py        # Unified weather service with automatic fallback
 ├── ambient_weather.py        # AmbientWeather.net API client for current conditions
 ├── weather_gov.py            # Weather.gov API client for 24-hour forecasts
 ├── blanketing_logic.py       # Pure business logic for blanketing decisions
+├── timezone_utils.py         # Browser timezone detection and formatting utilities
 ├── main_tab.py               # Blanketing instructions interface
-├── current_weather_tab.py    # Real-time conditions display
+├── current_weather_tab.py    # Real-time conditions display with source indicators
 ├── forecast_tab.py           # 24-hour planning and strategic recommendations
 ├── about_tab.py              # App information and documentation
-├── test_blanketing_logic.py  # Unit tests for business logic (20+ test cases)
+├── test_blanketing_logic.py  # Unit tests for business logic (35 test cases)
 ├── test_weather_api.py       # Standalone API testing script
 ├── run_tests.sh              # Convenient test runner script
 ├── requirements.txt          # Python dependencies
