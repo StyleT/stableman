@@ -139,7 +139,8 @@ def render_main_tab(weather_data):
             min_forecast_feels_like, forecast_periods, next_phase_time = get_next_phase_forecast(
                 phase_name, latitude, longitude, user_timezone
             )
-        except:
+        except Exception as e:
+            st.error(f"Error loading forecast: {str(e)}")
             min_forecast_feels_like = None
             forecast_periods = []
             next_phase_time = None
