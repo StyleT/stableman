@@ -297,6 +297,92 @@ class BlanktetingLogic:
         return max_rain_chance
 
 
+    @staticmethod
+    def get_next_phase_forecast(target_phase, latitude, longitude, user_timezone=None):
+        """
+        Get forecast data until the end of a specific target phase.
+        
+        Args:
+            target_phase: Target phase name ('Morning', 'Day', 'Night') to get forecast until
+            latitude: Location latitude
+            longitude: Location longitude
+            user_timezone: User's timezone object for accurate time calculations
+        
+        Returns:
+            tuple: (min_feels_like, forecast_periods, next_phase_time)
+        """
+        try:
+            from weather_gov import create_weather_gov_client
+            from datetime import datetime, timedelta
+            from dateutil import parser
+            
+            weather_client = create_weather_gov_client()
+            forecast_data, error = weather_client.get_24_hour_forecast(latitude, longitude)
+            
+            if error or not forecast_data:
+                return None, [], None
+            
+            forecast_periods = forecast_data.get('forecast', [])
+            
+            # Use user timezone for time calculations
+            if user_timezone:
+                import pytz
+                utc_now = datetime.now(pytz.UTC)
+                now = utc_now.astimezone(user_timezone)
+            else:
+                now = datetime.now()
+            
+            # Determine target phase end timing
+            if target_phase == 'Morning':
+                # Morning phase ends at 11:00 AM
+                next_phase_time = now.replace(hour=11, minute=0, second=0, microsecond=0)
+                if now.hour >= 11:
+                    next_phase_time += timedelta(days=1)  # Next day if already past 11 AM
+            elif target_phase == 'Day':
+                # Day phase ends at 3:50 PM
+                next_phase_time = now.replace(hour=15, minute=50, second=0, microsecond=0)
+                if now.hour >= 15 and now.minute >= 50:
+                    next_phase_time += timedelta(days=1)  # Next day if already past 3:50 PM
+            elif target_phase == 'Night':
+                # For Night phase targeting: go until midnight (stable hands re-blanket late, not early morning)
+                next_phase_time = now.replace(hour=23, minute=59, second=59, microsecond=0)
+                if now.hour >= 23 and now.minute >= 59:
+                    next_phase_time += timedelta(days=1)  # Next day if already past midnight
+            else:
+                # Default behavior for unknown phases
+                next_phase_time = now.replace(hour=11, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            
+            # Filter forecast periods until next phase
+            relevant_periods = []
+            min_feels_like = float('inf')
+            
+            # Make next_phase_time naive for comparison with forecast periods
+            comparison_time = next_phase_time.replace(tzinfo=None) if next_phase_time.tzinfo else next_phase_time
+            
+            for period in forecast_periods:
+                if not period.get('time'):
+                    continue
+                    
+                try:
+                    period_time = parser.parse(period['time'])
+                    # Convert to naive datetime for comparison
+                    if period_time.tzinfo:
+                        period_time = period_time.replace(tzinfo=None)
+                    
+                    if period_time <= comparison_time:
+                        relevant_periods.append(period)
+                        if period.get('feels_like') is not None:
+                            min_feels_like = min(min_feels_like, period['feels_like'])
+                except:
+                    continue
+            
+            return min_feels_like if min_feels_like != float('inf') else None, relevant_periods, next_phase_time
+            
+        except Exception as e:
+            # Don't use streamlit here since this is pure business logic
+            return None, [], None
+
+
 def get_care_instructions_by_category(category: str, housing_status: str) -> Dict[str, Any]:
     """
     Get care instructions for a specific blanket category.

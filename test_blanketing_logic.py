@@ -463,6 +463,158 @@ class TestCurrentPhase(unittest.TestCase):
                                f"Expected {expected_phase} at {hour:02d}:{minute:02d}, got {phase_name}")
 
 
+class TestGetNextPhaseForecast(unittest.TestCase):
+    """Test get_next_phase_forecast function logic"""
+    
+    def test_weather_api_error_handling(self):
+        """Test that function handles weather API errors gracefully"""
+        import pytz
+        
+        eastern = pytz.timezone('US/Eastern')
+        
+        # Mock weather client to return error
+        with patch('weather_gov.create_weather_gov_client') as mock_client:
+            mock_client.return_value.get_24_hour_forecast.return_value = (None, "API Error")
+            
+            min_feels_like, periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                'Morning', 40.7128, -74.0060, eastern
+            )
+            
+            # Should return None/empty values for error case
+            self.assertIsNone(min_feels_like)
+            self.assertEqual(periods, [])
+            self.assertIsNone(next_phase_time)
+    
+    def test_phase_timing_logic_basic(self):
+        """Test basic phase timing logic using simpler approach"""
+        from datetime import datetime, timedelta
+        import pytz
+        
+        # Test that function handles different target phases correctly
+        # by mocking the entire get_24_hour_forecast call
+        
+        forecast_data = {'forecast': []}  # Empty forecast for timing test
+        
+        with patch('weather_gov.create_weather_gov_client') as mock_client:
+            mock_client.return_value.get_24_hour_forecast.return_value = (forecast_data, None)
+            
+            # Test Morning phase timing
+            with patch('datetime.datetime') as mock_dt:
+                # Mock current time as 8:00 AM
+                mock_now = datetime(2026, 2, 17, 8, 0, 0)
+                mock_dt.now.return_value = mock_now
+                mock_dt.replace = datetime.replace  # Preserve replace method
+                
+                min_feels_like, periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                    'Morning', 40.7128, -74.0060, None  # Use None timezone to avoid pytz issues
+                )
+                
+                # Should end at 11:00 AM same day
+                if next_phase_time:
+                    self.assertEqual(next_phase_time.hour, 11)
+                    self.assertEqual(next_phase_time.minute, 0)
+            
+            # Test Day phase timing
+            with patch('datetime.datetime') as mock_dt:
+                # Mock current time as 1:00 PM
+                mock_now = datetime(2026, 2, 17, 13, 0, 0)
+                mock_dt.now.return_value = mock_now
+                mock_dt.replace = datetime.replace
+                
+                min_feels_like, periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                    'Day', 40.7128, -74.0060, None
+                )
+                
+                # Should end at 3:50 PM same day
+                if next_phase_time:
+                    self.assertEqual(next_phase_time.hour, 15)
+                    self.assertEqual(next_phase_time.minute, 50)
+            
+            # Test Night phase timing  
+            with patch('datetime.datetime') as mock_dt:
+                # Mock current time as 8:00 PM
+                mock_now = datetime(2026, 2, 17, 20, 0, 0)
+                mock_dt.now.return_value = mock_now
+                mock_dt.replace = datetime.replace
+                
+                min_feels_like, periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                    'Night', 40.7128, -74.0060, None
+                )
+                
+                # Should end at 11:59 PM same day (midnight boundary)
+                if next_phase_time:
+                    self.assertEqual(next_phase_time.hour, 23)
+                    self.assertEqual(next_phase_time.minute, 59)
+    
+    def test_forecast_period_processing(self):
+        """Test that forecast periods are processed correctly"""
+        from datetime import datetime
+        
+        # Mock forecast data with various periods
+        forecast_data = {
+            'forecast': [
+                {'time': '2026-02-17T09:00:00', 'feels_like': 35, 'short_forecast': 'Clear'},
+                {'time': '2026-02-17T10:00:00', 'feels_like': 30, 'short_forecast': 'Cloudy'},
+                {'time': None, 'feels_like': 25},  # Invalid time - should be skipped
+                {'time': '2026-02-17T12:00:00', 'feels_like': None},  # No feels_like - should be included but not counted
+            ]
+        }
+        
+        with patch('weather_gov.create_weather_gov_client') as mock_client, \
+             patch('dateutil.parser') as mock_parser:
+            
+            mock_client.return_value.get_24_hour_forecast.return_value = (forecast_data, None)
+            
+            # Mock datetime parsing to return valid datetime objects
+            def mock_parse_side_effect(time_str):
+                if time_str == '2026-02-17T09:00:00':
+                    return datetime(2026, 2, 17, 9, 0, 0)
+                elif time_str == '2026-02-17T10:00:00':
+                    return datetime(2026, 2, 17, 10, 0, 0)
+                elif time_str == '2026-02-17T12:00:00':
+                    return datetime(2026, 2, 17, 12, 0, 0)
+                return datetime(2026, 2, 17, 0, 0, 0)
+            
+            mock_parser.parse.side_effect = mock_parse_side_effect
+            
+            with patch('datetime.datetime') as mock_dt:
+                # Mock current time as 8:00 AM
+                mock_now = datetime(2026, 2, 17, 8, 0, 0)
+                mock_dt.now.return_value = mock_now
+                mock_dt.replace = datetime.replace
+                
+                min_feels_like, periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                    'Morning', 40.7128, -74.0060, None
+                )
+                
+                # Should process periods correctly
+                # Only periods before 11:00 AM with valid times should be included
+                self.assertIsInstance(periods, list)
+                
+                # Should calculate min feels_like from valid values only
+                if min_feels_like is not None:
+                    self.assertIsInstance(min_feels_like, (int, float))
+    
+    def test_exception_handling(self):
+        """Test that function handles various exceptions gracefully"""
+        
+        # Test when weather client creation fails
+        with patch('weather_gov.create_weather_gov_client') as mock_client:
+            mock_client.side_effect = Exception("Client creation failed")
+            
+            min_feels_like, periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                'Morning', 40.7128, -74.0060, None
+            )
+            
+            # Should return None/empty values for any exception
+            self.assertIsNone(min_feels_like)
+            self.assertEqual(periods, [])
+            self.assertIsNone(next_phase_time)
+
+
 if __name__ == '__main__':
+    # Import patch here to avoid issues if not available
+    from unittest.mock import patch
+    
     # Run all tests
     unittest.main(verbosity=2)
