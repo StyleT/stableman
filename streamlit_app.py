@@ -27,19 +27,18 @@ def get_weather_data():
     return weather_data, None
 
 @st.cache_data(ttl=1800)  # Cache for 30 minutes for forecast data
-def get_forecast_data():
+def get_forecast_data(latitude: float, longitude: float):
     """Fetch 24-hour forecast from Weather.gov API"""
-    # Default coordinates (you can make this configurable)
-    latitude = float(os.getenv('LOCATION_LATITUDE', '40.7128'))  # Default to NYC
-    longitude = float(os.getenv('LOCATION_LONGITUDE', '-74.0060'))
-    
     weather_gov = create_weather_gov_client()
-    forecast_data, error = weather_gov.get_24_hour_forecast(latitude, longitude)
+    forecast_response, error = weather_gov.get_24_hour_forecast(latitude, longitude)
     
     if error:
-        return None, error
+        return None, None, error
     
-    return forecast_data, None
+    if forecast_response:
+        return forecast_response.get('forecast'), forecast_response.get('location'), None
+    
+    return None, None, "No forecast data available"
 
 def handle_device_selection_error(error_msg):
     """Handle device selection errors and display appropriate UI"""
@@ -148,6 +147,13 @@ else:
             try:
                 last_update = weather_data['last_update']
                 
+                # Get browser timezone
+                browser_tz = st.context.timezone
+                if browser_tz:
+                    local_tz = pytz.timezone(browser_tz)
+                else:
+                    local_tz = pytz.UTC  # Fallback to UTC if no timezone detected
+                
                 # Handle different timestamp formats
                 if isinstance(last_update, (int, float)) or (isinstance(last_update, str) and last_update.isdigit()):
                     # Unix timestamp in milliseconds
@@ -159,11 +165,15 @@ else:
                     if utc_time.tzinfo is None:
                         utc_time = utc_time.replace(tzinfo=pytz.UTC)
                 
-                # Convert to a more readable format
-                readable_time = utc_time.strftime("%B %d, %Y at %I:%M %p UTC")
+                # Convert to local timezone
+                local_time = utc_time.astimezone(local_tz)
+                
+                # Convert to a more readable format in local time
+                tz_name = browser_tz or "UTC"
+                readable_time = local_time.strftime(f"%B %d, %Y at %I:%M %p {tz_name}")
                 st.caption(f"📅 Last updated: {readable_time}")
                 
-                # Display time ago
+                # Display time ago (using UTC for calculation)
                 now_utc = datetime.now(pytz.UTC)
                 time_diff = now_utc - utc_time
                 
@@ -224,12 +234,61 @@ st.divider()
 st.header("📊 24-Hour Weather Forecast")
 st.caption("⏱️ Forecast updated every 30 minutes from Weather.gov")
 
-forecast_data, forecast_error = get_forecast_data()
+# Get coordinates from environment variables
+latitude = float(os.getenv('LOCATION_LATITUDE', '40.7128'))  # Default to NYC
+longitude = float(os.getenv('LOCATION_LONGITUDE', '-74.0060'))
+
+forecast_data, location_info, forecast_error = get_forecast_data(latitude, longitude)
 
 if forecast_error:
     st.error(f"⚠️ Forecast Error: {forecast_error}")
     st.info("💡 Set LOCATION_LATITUDE and LOCATION_LONGITUDE environment variables for your location")
+    
+    # Show basic coordinate info even on error
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("📍 Latitude", f"{latitude}°")
+    with col2:
+        st.metric("📍 Longitude", f"{longitude}°")
 else:
+    # Display enhanced location information
+    if location_info:
+        city = location_info.get('city', '')
+        state = location_info.get('state', '')
+        office = location_info.get('office', '')
+        
+        # Create location display
+        if city and state:
+            location_display = f"{city}, {state}"
+        elif city:
+            location_display = city
+        else:
+            location_display = f"Coordinates: {latitude}°, {longitude}°"
+        
+        if office:
+            location_display += f" (NWS {office})"
+        
+        st.subheader(f"📍 {location_display}")
+        
+        # Show detailed coordinates
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("📍 Latitude", f"{latitude}°")
+        with col2:
+            st.metric("📍 Longitude", f"{longitude}°")
+        with col3:
+            if location_info.get('timezone'):
+                st.metric("🕐 Timezone", location_info['timezone'])
+    else:
+        # Fallback to basic coordinate display
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("📍 Latitude", f"{latitude}°")
+        with col2:
+            st.metric("📍 Longitude", f"{longitude}°")
+        st.caption(f"📍 Forecast Location: {latitude}°, {longitude}°")
+
+    # Display forecast data if available
     if forecast_data:
         # Display forecast overview
         st.subheader("🌡️ Temperature & Conditions Forecast")
@@ -239,14 +298,23 @@ else:
         
         def display_forecast_period(periods, start_idx, end_idx):
             """Helper function to display forecast periods"""
+            # Get browser timezone for consistent time display
+            browser_tz = st.context.timezone
+            if browser_tz:
+                local_tz = pytz.timezone(browser_tz)
+            else:
+                local_tz = pytz.UTC  # Fallback to UTC if no timezone detected
+                
             for i, period in enumerate(periods[start_idx:end_idx], start_idx):
                 try:
                     # Parse time
                     time_str = period.get('time', '')
                     if time_str:
                         dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-                        time_display = dt.strftime("%I:%M %p")
-                        date_display = dt.strftime("%a %m/%d")
+                        # Convert to local timezone
+                        local_dt = dt.astimezone(local_tz)
+                        time_display = local_dt.strftime("%I:%M %p")
+                        date_display = local_dt.strftime("%a %m/%d")
                     else:
                         time_display = f"Hour {i+1}"
                         date_display = ""

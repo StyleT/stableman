@@ -114,16 +114,19 @@ class WeatherGovAPI:
         
         return data['properties']['periods'], None
     
-    def get_24_hour_forecast(self, latitude: float, longitude: float) -> Tuple[Optional[List[Dict]], Optional[str]]:
+    def get_24_hour_forecast(self, latitude: float, longitude: float) -> Tuple[Optional[Dict], Optional[str]]:
         """
-        Get detailed 24-hour forecast for coordinates
+        Get detailed 24-hour forecast for coordinates with location info
         
         Args:
             latitude: Latitude in decimal degrees
             longitude: Longitude in decimal degrees
             
         Returns:
-            Tuple of (forecast_data_list, error_message)
+            Tuple of (forecast_response_dict, error_message)
+            forecast_response_dict contains:
+            - 'location': location information
+            - 'forecast': list of forecast periods
         """
         # Step 1: Get grid point
         grid_info, error = self.get_grid_point(latitude, longitude)
@@ -137,6 +140,15 @@ class WeatherGovAPI:
         grid_x = props.get('gridX')
         grid_y = props.get('gridY')
         office = props.get('gridId')
+        
+        # Extract location information from grid point response
+        location_info = {
+            'city': props.get('relativeLocation', {}).get('properties', {}).get('city', ''),
+            'state': props.get('relativeLocation', {}).get('properties', {}).get('state', ''),
+            'office': office,
+            'timezone': props.get('timeZone', ''),
+            'coordinates': f"{latitude}, {longitude}"
+        }
         
         if not all([grid_x, grid_y, office]):
             return None, "Missing grid coordinates"
@@ -181,7 +193,10 @@ class WeatherGovAPI:
             }
             enhanced_forecast.append(enhanced_period)
         
-        return enhanced_forecast, None
+        return {
+            'location': location_info,
+            'forecast': enhanced_forecast
+        }, None
 
 
 def create_weather_gov_client(user_agent: str = "StablemanApp/1.0") -> WeatherGovAPI:
