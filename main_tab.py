@@ -78,18 +78,7 @@ def get_period_time_string(period, index, user_timezone):
     
     return time_str
 
-
-def render_phase_recommendations(phase_name, current_feels_like, housing_status, latitude, longitude, user_timezone):
-    """
-    Render blanketing recommendations for any phase using configuration.
-    
-    Args:
-        phase_name: Current phase name
-        current_feels_like: Current feels-like temperature
-        housing_status: Current housing status
-        latitude, longitude: Location coordinates
-        user_timezone: User's timezone
-    """
+def calculate_phase_decisions(phase_name, current_feels_like, housing_status, latitude, longitude, user_timezone):
     phase_config = PHASE_RECOMMENDATION_CONFIG.get(phase_name)
     if not phase_config:
         st.error(f"No configuration found for phase: {phase_name}")
@@ -97,30 +86,31 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
     
     options = phase_config["options"]
     decisions = []
-    forecast_data = []
     
     # Calculate decisions and forecast data for each option
     for option in options:
-        try:
-            forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
-                option["target_phase"], latitude, longitude, user_timezone
-            )
+        forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+            option["target_phase"], latitude, longitude, user_timezone
+        )
+        
+        blanketing_decision = BlanktetingLogic.make_blanketing_decision(
+            current_feels_like, None, housing_status, forecast_periods
+        )
+        
+        decisions.append((option, blanketing_decision, forecast_periods, next_phase_time))
             
-            blanketing_decision = BlanktetingLogic.make_blanketing_decision(
-                current_feels_like, None, housing_status, forecast_periods
-            )
-            
-            decisions.append((option, blanketing_decision, forecast_periods, next_phase_time))
-            forecast_data.append((forecast_periods, next_phase_time, option))
-            
-        except Exception as e:
-            st.error(f"Error calculating {option['name']}: {e}")
-            # Log the full error for debugging
-            st.write(f"🔍 Error details: {str(e)}")
-            continue
+    return decisions
+
+
+def render_phase_recommendations(decisions, phase_name, current_feels_like, user_timezone):
+    """
+    Render blanketing recommendations for any phase using configuration.
     
-    if not decisions:
-        return
+    Args:
+        phase_name: Current phase name
+        current_feels_like: Current feels-like temperature
+        user_timezone: User's timezone
+    """
     
     # Display recommendations
     if len(decisions) == 1:
@@ -242,21 +232,15 @@ def render_main_tab(weather_data):
             st.write(f"🔍 Forecast error details: {type(e).__name__}: {str(e)}")
             forecast_periods = []
         
-        # Get broader forecast data for graph display
-        try:
-            weather_client = create_weather_gov_client()
-            forecast_data_result = weather_client.get_24_hour_forecast(latitude, longitude)
-            if forecast_data_result[0] and 'forecast' in forecast_data_result[0]:
-                graph_forecast_periods = forecast_data_result[0]['forecast']
-            else:
-                graph_forecast_periods = forecast_periods  # Fallback to phase forecast
-        except Exception as e:
-            st.warning(f"24-hour forecast unavailable: {type(e).__name__}: {str(e)}")
-            graph_forecast_periods = forecast_periods  # Fallback to phase forecast
-        
         # Determine housing status using business logic (needed for forecast graph)
         housing_decision = BlanktetingLogic.determine_housing_status(
             weather_data, forecast_periods
+        )
+        
+        housing_status = housing_decision.status
+        
+        decisions = calculate_phase_decisions(
+            phase_name, current_feels_like, housing_status, latitude, longitude, user_timezone
         )
         
         # Display current temperature and forecast summary
@@ -265,10 +249,8 @@ def render_main_tab(weather_data):
             st.metric("Current Feels Like", f"{current_feels_like}°F")
         
         with col2:
-            if graph_forecast_periods:
-                render_forecast_graph(graph_forecast_periods, housing_decision.status)
-            else:
-                st.metric("Forecast Data", "Loading...")
+            print(f"Debug: Rendering forecast graph with {decisions[0][2]} periods, housing status: {housing_status}")
+            render_forecast_graph(decisions[0][2], housing_decision.status, user_timezone)
         
         with col3:
             # Display housing status (already determined above)
@@ -288,21 +270,9 @@ def render_main_tab(weather_data):
                 st.caption(f"🔒 {housing_decision.reason}")
                 housing_status = housing_decision.status
         
-        # Make blanketing decision using improved temperature analysis
-        blanketing_decision = BlanktetingLogic.make_blanketing_decision(
-            current_feels_like, None, housing_status, forecast_periods
-        )
-        
-        # Show temperature drop alert if applicable
-        if blanketing_decision.has_temp_drop_alert:
-            st.warning(f"⚠️ **Temperature Drop Alert**: Current {current_feels_like}°F → Forecast Low {blanketing_decision.forecast_low}°F")
-            if blanketing_decision.step_down_applied:
-                st.info("🧠 **Smart Blanketing**: Reducing blanket weight to prevent overheating. Horses tolerate brief cold better than overblanketing.")
-        
         # Use generalized recommendation rendering for all phases
         render_phase_recommendations(
-            phase_name, current_feels_like, housing_status, 
-            latitude, longitude, user_timezone
+            decisions, phase_name, current_feels_like, user_timezone
         )
     else:
         st.info("Connect weather data to see personalized blanketing recommendations")
