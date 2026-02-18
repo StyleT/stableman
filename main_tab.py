@@ -232,27 +232,18 @@ def render_main_tab(weather_data):
             st.write(f"🔍 Forecast error details: {type(e).__name__}: {str(e)}")
             forecast_periods = []
         
-        # Determine housing status using business logic (needed for forecast graph)
+        # Determine housing status using business logic
         housing_decision = BlanktetingLogic.determine_housing_status(
             weather_data, forecast_periods
         )
         
-        housing_status = housing_decision.status
-        
-        decisions = calculate_phase_decisions(
-            phase_name, current_feels_like, housing_status, latitude, longitude, user_timezone
-        )
-        
-        # Display current temperature and forecast summary
+        # Display current temperature and housing status first
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
             st.metric("Current Feels Like", f"{current_feels_like}°F")
         
-        with col2:
-            render_forecast_graph(decisions[0][2], housing_decision.status)
-        
         with col3:
-            # Display housing status (already determined above)
+            # Display housing status 
             if housing_decision.user_selectable:
                 # Show selector when conditions allow user choice
                 housing_status = st.selectbox(
@@ -268,6 +259,14 @@ def render_main_tab(weather_data):
                 st.metric("Housing Status", housing_decision.status.split()[-1])  # Show just "OUT" or "IN"
                 st.caption(f"🔒 {housing_decision.reason}")
                 housing_status = housing_decision.status
+        
+        # Calculate decisions AFTER housing status is determined (including user input)
+        decisions = calculate_phase_decisions(
+            phase_name, current_feels_like, housing_status, latitude, longitude, user_timezone
+        )
+        
+        with col2:
+            render_forecast_graph(decisions[0][2], housing_status)
         
         # Use generalized recommendation rendering for all phases
         render_phase_recommendations(
