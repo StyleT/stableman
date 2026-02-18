@@ -53,6 +53,9 @@ else:
 
     with tab1:
         # Main tab with blanketing instructions
+        if error:
+            st.error(f"Weather data unavailable: {error}")
+            st.info("Check your internet connection or API configuration.")
         render_main_tab(weather_data)
 
     with tab2:

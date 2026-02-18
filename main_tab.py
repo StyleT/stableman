@@ -233,7 +233,7 @@ def render_main_tab(weather_data):
     phase_name = BlanktetingLogic.get_current_phase(user_timezone)
     
     # Advanced blanketing logic with forecast integration
-    if weather_data and weather_data['feels_like'] is not None:
+    if weather_data and weather_data.get('feels_like') is not None:
         current_feels_like = weather_data['feels_like']
         
         # Get forecast data for next phase (for blanketing decisions)

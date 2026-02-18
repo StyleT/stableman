@@ -132,6 +132,7 @@ class AmbientWeatherAPI:
         data, error = self._make_request(endpoint, params)
         if error:
             logging.error(f"Failed to get device data for {mac_address}: {error}")
+            return None, error
         else:
             logging.info(f"Successfully retrieved weather data for device {mac_address}")
         
