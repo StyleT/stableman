@@ -64,5 +64,5 @@ def render_forecast_graph(forecast_periods, housing_status):
             height=150
         )
         
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width='stretch')
         st.caption(f"{len(forecast_periods)} hours available • {len(forecast_data)} shown")

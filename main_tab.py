@@ -234,14 +234,13 @@ def render_main_tab(weather_data):
         # Get forecast data for next phase (for blanketing decisions)
         try:
             latitude, longitude = get_location_coordinates()
-            forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+            forecast_periods, _ = BlanktetingLogic.get_next_phase_forecast(
                 phase_name, latitude, longitude, user_timezone
             )
         except Exception as e:
             st.error(f"Error loading forecast: {str(e)}")
             st.write(f"🔍 Forecast error details: {type(e).__name__}: {str(e)}")
             forecast_periods = []
-            next_phase_time = None
         
         # Get broader forecast data for graph display
         try:
