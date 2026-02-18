@@ -9,7 +9,7 @@ from blanketing_logic import BlanktetingLogic
 from dateutil import parser
 
 
-def render_forecast_graph(forecast_periods, housing_status, user_timezone=None):
+def render_forecast_graph(forecast_periods, housing_status):
     """
     Render a dual-axis forecast graph showing temperature and blanketing score.
     

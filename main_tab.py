@@ -249,8 +249,7 @@ def render_main_tab(weather_data):
             st.metric("Current Feels Like", f"{current_feels_like}°F")
         
         with col2:
-            print(f"Debug: Rendering forecast graph with {decisions[0][2]} periods, housing status: {housing_status}")
-            render_forecast_graph(decisions[0][2], housing_decision.status, user_timezone)
+            render_forecast_graph(decisions[0][2], housing_decision.status)
         
         with col3:
             # Display housing status (already determined above)
