@@ -487,7 +487,7 @@ class BlanktetingLogic:
             user_timezone: User's timezone object for accurate time calculations
         
         Returns:
-            tuple: (min_feels_like, forecast_periods, next_phase_time)
+            tuple: (forecast_periods, next_phase_time)
         """
         try:
             from weather_gov import create_weather_gov_client
@@ -498,7 +498,7 @@ class BlanktetingLogic:
             forecast_data, error = weather_client.get_24_hour_forecast(latitude, longitude)
             
             if error or not forecast_data:
-                return None, [], None
+                return [], None
             
             forecast_periods = forecast_data.get('forecast', [])
             
@@ -524,8 +524,6 @@ class BlanktetingLogic:
             elif target_phase == 'Night':
                 # For Night phase targeting: go until midnight (stable hands re-blanket late, not early morning)
                 next_phase_time = now.replace(hour=23, minute=59, second=59, microsecond=0)
-                if now.hour >= 23 and now.minute >= 59:
-                    next_phase_time += timedelta(days=1)  # Next day if already past midnight
             else:
                 # Default behavior for unknown phases
                 next_phase_time = now.replace(hour=11, minute=0, second=0, microsecond=0) + timedelta(days=1)
@@ -554,12 +552,11 @@ class BlanktetingLogic:
                 except:
                     continue
             
-            return min_feels_like if min_feels_like != float('inf') else None, relevant_periods, next_phase_time
+            return relevant_periods, next_phase_time
             
         except Exception as e:
             # Don't use streamlit here since this is pure business logic
-            return None, [], None
-
+            return [], None
 
 def get_care_instructions_by_category(category: str, housing_status: str) -> Dict[str, Any]:
     """

@@ -102,14 +102,9 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
     # Calculate decisions and forecast data for each option
     for option in options:
         try:
-            if option["target_phase"] == "Morning":  # Standard next phase lookup
-                min_forecast_feels_like, forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
-                    phase_name, latitude, longitude, user_timezone
-                )
-            else:  # Look ahead to specific target phase
-                min_forecast_feels_like, forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
-                    option["target_phase"], latitude, longitude, user_timezone
-                )
+            forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+                option["target_phase"], latitude, longitude, user_timezone
+            )
             
             blanketing_decision = BlanktetingLogic.make_blanketing_decision(
                 current_feels_like, None, housing_status, forecast_periods
@@ -239,7 +234,7 @@ def render_main_tab(weather_data):
         # Get forecast data for next phase (for blanketing decisions)
         try:
             latitude, longitude = get_location_coordinates()
-            min_forecast_feels_like, forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
+            forecast_periods, next_phase_time = BlanktetingLogic.get_next_phase_forecast(
                 phase_name, latitude, longitude, user_timezone
             )
         except Exception as e:
