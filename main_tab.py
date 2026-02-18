@@ -146,7 +146,7 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
                 for i, period in enumerate(forecast_periods):
                     if period.get('feels_like') is not None:
                         time_str = get_period_time_string(period, i, user_timezone)
-                        st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+                        st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')}), 🌧️ {period.get('precipitation_chance', 0)}%")
     
     else:
         # Multiple options - show primary and alternatives
@@ -209,7 +209,7 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
                         for i, period in enumerate(forecast_periods):
                             if period.get('feels_like') is not None:
                                 time_str = get_period_time_string(period, i, user_timezone)
-                                st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+                                st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')}), 🌧️ {period.get('precipitation_chance', 0)}%")
         elif primary_option:
             # Show single timeline for primary option
             option, decision, forecast_periods, next_phase_time = primary_option
@@ -219,7 +219,7 @@ def render_phase_recommendations(phase_name, current_feels_like, housing_status,
                     for i, period in enumerate(forecast_periods):
                         if period.get('feels_like') is not None:
                             time_str = get_period_time_string(period, i, user_timezone)
-                            st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')})")
+                            st.write(f"• **{time_str}**: {period['feels_like']}°F feels like ({period.get('short_forecast', 'N/A')}), 🌧️ {period.get('precipitation_chance', 0)}%")
 
 
 def render_main_tab(weather_data):
