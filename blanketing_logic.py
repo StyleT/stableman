@@ -269,8 +269,8 @@ class BlanktetingLogic:
             )
             
             # Combine current and forecast analysis
-            # Weight current conditions at 30% and forecast at 70%
-            combined_score = ((current_score * 0.3) + (avg_forecast_score * 0.7)) / 2  # Normalize to 0-3 scale
+            # Weight current conditions at 20% and forecast at 80%
+            combined_score = (current_score * 0.2) + (avg_forecast_score * 0.8)  # Normalize to 0-3 scale
             recommended_category = cls.blanketing_score_to_category(combined_score)
             
             # Check for temperature drop alert (significant change from current to forecast)
